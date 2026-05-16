@@ -1,4 +1,4 @@
-# ShieldPro AntiVirus
+# ShieldPro AntiVirus v2.0
 
 <div align="center">
 
@@ -16,9 +16,11 @@ Built by RuGuard
 
 ShieldPro is a modern antivirus solution featuring:
 - 🔍 **Signature-based Scanner** - Fast pattern matching detection
-- 📛 **Quarantine System** - Secure threat isolation
+- 📛 **Quarantine System** - Secure threat isolation with restore/delete
 - 📜 **Event Logging** - Complete activity audit trail
-- 🖥️ **Modern GUI** - Clean, dark-themed interface
+- 🖥️ **Modern PyQt6 GUI** - Clean, dark-themed interface with 3 themes
+- 👤 **User Profile** - Scan history and system information
+- ⚙️ **Advanced Settings** - Import/export configurations, exclusions, performance tuning
 
 ## 🚀 Quick Start
 
@@ -34,18 +36,15 @@ dist\ShieldPro.exe
 
 Or manually:
 ```powershell
-pip install pyinstaller
-pyinstaller --onefile --name ShieldPro src\gui\shieldpro_tk.py
+pip install -r requirements.txt
+pyinstaller --onefile --name ShieldPro src\gui\shieldpro.py
 ```
 
 ## 🧪 Testing
 
 Create EICAR test file to verify detection:
 ```powershell
-# Create test file
 "X5O!P%@AP[4\PZX54(P^)7CC)7}\$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!\$H+H*" > test.com
-
-# Scan with ShieldPro - should detect as EICAR virus
 ```
 
 ## 📦 Project Structure
@@ -56,53 +55,42 @@ ShieldPro/
 │   ├── engine/         # C signature scanner (DLL)
 │   ├── heuristic/      # Rust heuristic analysis (DLL)
 │   ├── monitor/        # C++ system monitor (DLL)
-│   ├── updater/       # Go update client (DLL)
+│   ├── updater/        # Go update client (DLL)
+│   ├── database.py     # SQLite database module
 │   └── gui/
-│       ├── shieldpro.py      # PyQt5 version (needs Python 3.8-3.12)
-│       └── shieldpro_tk.py  # Tkinter version (works with any Python)
-├── modules/            # Native DLLs (require compilation)
+│       ├── shieldpro.py       # PyQt6 version (primary)
+│       └── shieldpro_tk.py   # Tkinter fallback
+├── modules/            # Native DLLs
 ├── data/
 │   ├── signatures/     # Virus signature database
 │   ├── quarantine/     # Isolated threats
-│   └── logs/          # Event logs
-├── dist/              # Built executables
-├── setup.ps1          # Build script
-├── requirements.txt   # Python dependencies
+│   └── logs/           # Event logs
+├── dist/               # Built executables
+├── setup.ps1           # Build script
+├── requirements.txt    # Python dependencies
 └── README.md
 ```
 
-## 🔧 Building Native Modules (Optional)
+## ⚙️ Settings
 
-For full functionality with native DLLs:
+### General
+- Autostart, real-time protection, auto-update
+- USB protection, firewall toggle
 
-1. **C Engine** (scanner.c):
-   ```bash
-   gcc -shared -o engine.dll scanner.c -O2
-   ```
+### Scanning
+- Max file size, scan depth, thread count
+- File type filters (.exe, .dll, docs, archives)
+- Heuristic analysis, auto-quarantine
+- Path and extension exclusions
 
-2. **Rust Heuristic** (src/heuristic/):
-   ```bash
-   cargo build --release
-   ```
+### Appearance
+- 3 themes: Dark, Light, Blue
+- Language: Russian / English
+- Adjustable font size
 
-3. **C++ Monitor** (src/monitor/):
-   ```bash
-   cl /LD monitor.cpp
-   ```
-
-4. **Go Updater** (src/updater/):
-   ```bash
-   go build -buildmode=c-shared
-   ```
-
-## ⚙️ Requirements
-
-- **Python**: 3.8+
-- **No external dependencies** (uses built-in Tkinter)
-
-For PyQt5 version (better UI):
-- Python 3.8-3.12
-- PyQt5
+### Import/Export
+- Export all settings to JSON
+- Import settings from backup
 
 ## 📝 Features
 
@@ -111,10 +99,15 @@ For PyQt5 version (better UI):
 | Quick Scan | ✅ |
 | Full Scan | ✅ |
 | Custom Scan | ✅ |
+| Pause/Resume Scan | ✅ |
 | Signature Database | ✅ |
-| Quarantine | ✅ |
+| Quarantine (restore/delete) | ✅ |
 | Event Logging | ✅ |
-| Dark Theme UI | ✅ |
+| Scan History | ✅ |
+| User Profile | ✅ |
+| Settings Import/Export | ✅ |
+| 3 Themes | ✅ |
+| System Tray | ✅ |
 
 ## 📄 License
 
