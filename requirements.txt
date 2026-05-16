@@ -1,7 +1,6 @@
-pyqt5>=5.15.10
-pyqt5-tools>=5.15.10.1.7
-PyQtWebEngine>=5.15.7
+PyQt6>=6.6.0
+PyQt6-Qt6>=6.6.0
+PyQt6-sip>=13.6.0
 psutil>=5.9.6
-watchdog>=3.0.0
 pyinstaller>=6.3.0
 pypiwin32>=223

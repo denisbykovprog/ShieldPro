@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['src\\gui\\shieldpro_tk.py'],
+    ['src\\gui\\shieldpro.py'],
     pathex=[],
     binaries=[],
     datas=[('data', 'data')],

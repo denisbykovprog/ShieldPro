@@ -1,1174 +1,791 @@
-import sys
-import os
-import ctypes
-import threading
-import time
-import datetime
-import json
-import hashlib
-import shutil
-import tempfile
+"""ShieldPro AntiVirus v2.0 - Optimized PyQt6 Edition"""
+import sys, os, ctypes, json, shutil, hashlib, platform, datetime, time, threading
 from pathlib import Path
-from typing import Optional, Callable, List, Dict
-
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+from dataclasses import dataclass, field, asdict
+from typing import Optional, Callable
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QLineEdit, QTextEdit,
-    QProgressBar, QComboBox, QCheckBox, QGroupBox, QSystemTrayIcon, QMenu, QAction, QMessageBox,
-    QFileDialog, QHeaderView, QSplitter, QFrame, QStatusBar, QToolBar, QDialog, QDialogButtonBox,
-    QScrollArea, QListWidget, QListWidgetItem, QProgressDialog)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread, QDateTime, QSettings, QSize
-from PyQt5.QtGui import QIcon, QFont, QPalette, QColor, QPainter, QBrush, QLinearGradient, QCursor
+    QProgressBar, QComboBox, QCheckBox, QGroupBox, QSystemTrayIcon, QMenu, QMessageBox,
+    QFileDialog, QHeaderView, QSplitter, QFrame, QStatusBar, QScrollArea, QGridLayout,
+    QSizePolicy, QSpinBox, QDoubleSpinBox, QSlider, QStackedWidget, QToolBar, QToolButton,
+    QRadioButton, QButtonGroup, QDialog, QDialogButtonBox, QFormLayout)
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize
+from PyQt6.QtGui import QAction, QIcon, QFont, QColor, QPainter, QLinearGradient, QCursor, QPalette, QBrush
 
-try:
-    from PyQt5.QtWinExtras import QtWin
-    QtWin.setWindowFramework(QWindowDXGI)
-except:
-    pass
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+SIG_DIR = DATA_DIR / "signatures"
+QUAR_DIR = DATA_DIR / "quarantine"
+LOG_DIR = DATA_DIR / "logs"
+MODULES_DIR = BASE_DIR / "modules"
+SETTINGS_FILE = DATA_DIR / "settings.json"
+QUAR_FILE = DATA_DIR / "quarantine.json"
+SIG_FILE = SIG_DIR / "signatures.txt"
+DB_PATH = BASE_DIR / "shieldpro.db"
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODULES_DIR = os.path.join(BASE_DIR, "modules")
-DATA_DIR = os.path.join(BASE_DIR, "data")
-SIGNATURES_DIR = os.path.join(DATA_DIR, "signatures")
-QUARANTINE_DIR = os.path.join(DATA_DIR, "quarantine")
-LOGS_DIR = os.path.join(DATA_DIR, "logs")
+for d in (SIG_DIR, QUAR_DIR, LOG_DIR): d.mkdir(parents=True, exist_ok=True)
 
-for d in [SIGNATURES_DIR, QUARANTINE_DIR, LOGS_DIR]:
-    os.makedirs(d, exist_ok=True)
+if not SIG_FILE.exists():
+    SIG_FILE.write_text("EICAR:58354f2150254041505b345c505a58353428505e\nTestVirus:48656c6c6f576f726c64\n")
 
-SIGNATURES_FILE = os.path.join(SIGNATURES_DIR, "signatures.txt")
-if not os.path.exists(SIGNATURES_FILE):
-    with open(SIGNATURES_FILE, "w") as f:
-        f.write("EICAR:58354f2150254041505b345c505a58353428505e\n")
-        f.write("TestVirus:48656c6c6f576f726c64\n")
+# ─── Theme Colors ───
+THEMES = {
+    "dark": {"bg": "#1E1E1E", "surface": "#252526", "card": "#2D2D30", "border": "#3E3E42",
+             "primary": "#0078D7", "primary_hover": "#106EBE", "success": "#4CAF50",
+             "danger": "#C62828", "warning": "#FF9800", "text": "#FFFFFF", "text2": "#AAAAAA"},
+    "light": {"bg": "#F5F5F5", "surface": "#FFFFFF", "card": "#FAFAFA", "border": "#E0E0E0",
+              "primary": "#2196F3", "primary_hover": "#1976D2", "success": "#4CAF50",
+              "danger": "#F44336", "warning": "#FF9800", "text": "#333333", "text2": "#757575"},
+    "blue": {"bg": "#0D1B2A", "surface": "#1B2838", "card": "#243447", "border": "#37475A",
+             "primary": "#00B4D8", "primary_hover": "#0096C7", "success": "#2DC653",
+             "danger": "#EF476F", "warning": "#FFD166", "text": "#FFFFFF", "text2": "#8D99AE"}
+}
 
-os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)))
+LANG = {
+    "ru": {"title": "ShieldPro - Антивирус", "dashboard": "📊 Панель", "scan": "🔍 Сканирование",
+           "quarantine": "📛 Карантин", "log": "📜 Журнал", "settings": "⚙️ Настройки",
+           "profile": "👤 Профиль", "protection": "🛡️ Защита активна", "quick_scan": "🚀 Быстрое",
+           "full_scan": "🔍 Полное", "custom_scan": "📁 Выборочное", "update_db": "📥 Обновить базу",
+           "start": "▶ Старт", "stop": "⏹ Стоп", "pause": "⏸ Пауза", "resume": "▶ Продолжить",
+           "refresh": "🔄 Обновить", "delete_all": "🗑️ Удалить всё", "clear": "Очистить",
+           "save": "💾 Сохранить", "export": "📤 Экспорт", "import": "📥 Импорт",
+           "no_threats": "Угроз не найдено", "scan_done": "Сканирование завершено",
+           "threats_count": "Найдено угроз", "quarantine_empty": "Карантин пуст",
+           "stats": "Статистика", "total_scans": "Всего сканирований", "total_threats": "Обнаружено угроз",
+           "quarantined": "В карантине", "last_scan": "Последнее сканирование", "never": "Никогда",
+           "scan_history": "История сканирований", "date": "Дата", "type": "Тип",
+           "files": "Файлов", "threats": "Угрозы", "duration": "Длительность", "status": "Статус",
+           "completed": "Завершено", "stopped": "Остановлено", "running": "Выполняется",
+           "general": "Общие", "scan_cfg": "Сканирование", "appearance": "Внешний вид",
+           "security": "Безопасность", "performance": "Производительность", "notifications": "Уведомления",
+           "autostart": "Автозапуск", "realtime": "Защита в реальном времени",
+           "auto_update": "Автообновление", "max_file_size": "Макс. размер (МБ)",
+           "scan_depth": "Глубина", "scan_exe": "Сканировать .exe", "scan_dll": "Сканировать .dll",
+           "scan_doc": "Сканировать документы", "scan_archives": "Сканировать архивы",
+           "heuristic": "Эвристика", "auto_quarantine": "Авто-карантин",
+           "theme": "Тема", "language": "Язык", "font_size": "Размер шрифта",
+           "dark": "Тёмная", "light": "Светлая", "blue": "Синяя",
+           "sound": "Звуковые уведомления", "popup": "Всплывающие уведомления",
+           "threads": "Потоки сканирования", "priority": "Приоритет процесса",
+           "low": "Низкий", "normal": "Нормальный", "high": "Высокий",
+           "exclude_paths": "Исключения (пути)", "exclude_ext": "Исключения (расширения)",
+           "backup_settings": "Резервная копия настроек", "restore_settings": "Восстановить настройки",
+           "settings_saved": "Настройки сохранены", "profile_saved": "Профиль сохранён",
+           "export_success": "Настройки экспортированы", "import_success": "Настройки импортированы",
+           "warning": "Внимание", "select_folder": "Выберите папку!", "confirm_clear": "Очистить всё?",
+           "username": "Имя", "email": "Email", "level": "Уровень защиты",
+           "standard": "Стандартный", "enhanced": "Усиленный", "maximum": "Максимальный",
+           "scan_speed": "Скорость сканирования", "files_sec": "файлов/сек",
+           "avg_duration": "Среднее время", "system_info": "Системная информация",
+           "os": "ОС", "python": "Python", "version": "Версия",
+           "memory_scan": "Сканирование памяти", "processes": "Процессы",
+           "usb_protection": "USB защита", "firewall": "Файрвол"},
+    "en": {"title": "ShieldPro - Antivirus", "dashboard": "📊 Dashboard", "scan": "🔍 Scanning",
+           "quarantine": "📛 Quarantine", "log": "📜 Log", "settings": "⚙️ Settings",
+           "profile": "👤 Profile", "protection": "🛡️ Protection Active", "quick_scan": "🚀 Quick",
+           "full_scan": "🔍 Full", "custom_scan": "📁 Custom", "update_db": "📥 Update DB",
+           "start": "▶ Start", "stop": "⏹ Stop", "pause": "⏸ Pause", "resume": "▶ Resume",
+           "refresh": "🔄 Refresh", "delete_all": "🗑️ Delete All", "clear": "Clear",
+           "save": "💾 Save", "export": "📤 Export", "import": "📥 Import",
+           "no_threats": "No threats found", "scan_done": "Scan complete",
+           "threats_count": "Threats found", "quarantine_empty": "Quarantine empty",
+           "stats": "Statistics", "total_scans": "Total scans", "total_threats": "Threats detected",
+           "quarantined": "In quarantine", "last_scan": "Last scan", "never": "Never",
+           "scan_history": "Scan History", "date": "Date", "type": "Type",
+           "files": "Files", "threats": "Threats", "duration": "Duration", "status": "Status",
+           "completed": "Completed", "stopped": "Stopped", "running": "Running",
+           "general": "General", "scan_cfg": "Scanning", "appearance": "Appearance",
+           "security": "Security", "performance": "Performance", "notifications": "Notifications",
+           "autostart": "Autostart", "realtime": "Real-time protection",
+           "auto_update": "Auto-update", "max_file_size": "Max file size (MB)",
+           "scan_depth": "Depth", "scan_exe": "Scan .exe", "scan_dll": "Scan .dll",
+           "scan_doc": "Scan documents", "scan_archives": "Scan archives",
+           "heuristic": "Heuristic", "auto_quarantine": "Auto-quarantine",
+           "theme": "Theme", "language": "Language", "font_size": "Font size",
+           "dark": "Dark", "light": "Light", "blue": "Blue",
+           "sound": "Sound notifications", "popup": "Popup notifications",
+           "threads": "Scan threads", "priority": "Process priority",
+           "low": "Low", "normal": "Normal", "high": "High",
+           "exclude_paths": "Excluded paths", "exclude_ext": "Excluded extensions",
+           "backup_settings": "Backup settings", "restore_settings": "Restore settings",
+           "settings_saved": "Settings saved", "profile_saved": "Profile saved",
+           "export_success": "Settings exported", "import_success": "Settings imported",
+           "warning": "Warning", "select_folder": "Select a folder!", "confirm_clear": "Clear all?",
+           "username": "Name", "email": "Email", "level": "Protection level",
+           "standard": "Standard", "enhanced": "Enhanced", "maximum": "Maximum",
+           "scan_speed": "Scan speed", "files_sec": "files/sec",
+           "avg_duration": "Average time", "system_info": "System Info",
+           "os": "OS", "python": "Python", "version": "Version",
+           "memory_scan": "Memory scan", "processes": "Processes",
+           "usb_protection": "USB protection", "firewall": "Firewall"}
+}
 
-engine_lib = None
-heuristic_lib = None
-monitor_lib = None
-updater_lib = None
+def t(k): return LANG.get(cfg.language, LANG["ru"]).get(k, k)
 
-def load_native_modules():
-    global engine_lib, heuristic_lib, monitor_lib, updater_lib
-    engine_lib = None
-    heuristic_lib = None
-    monitor_lib = None
-    updater_lib = None
+# ─── Settings Dataclass ───
+@dataclass
+class ScanSettings:
+    max_file_size_mb: int = 50
+    scan_depth: int = 5
+    scan_exe: bool = True
+    scan_dll: bool = True
+    scan_doc: bool = True
+    scan_archives: bool = True
+    heuristic: bool = True
+    auto_quarantine: bool = True
+    threads: int = 4
+    priority: str = "normal"
+    exclude_paths: str = ""
+    exclude_ext: str = "tmp,log,bak"
 
-    def is_valid_dll(path):
-        if not os.path.exists(path):
-            return False
-        try:
-            with open(path, 'rb') as f:
-                header = f.read(2)
-                return header == b'MZ'
-        except:
-            return False
+@dataclass
+class ProfileSettings:
+    username: str = "User"
+    email: str = "user@shieldpro.local"
+    level: str = "standard"
 
-    try:
-        engine_path = os.path.join(MODULES_DIR, "engine.dll")
-        if is_valid_dll(engine_path):
-            engine_lib = ctypes.CDLL(engine_path)
-            engine_lib.init_scanner.restype = ctypes.c_int
-            engine_lib.init_scanner.argtypes = [ctypes.c_char_p]
-            engine_lib.load_signatures.restype = ctypes.c_int
-            engine_lib.load_signatures.argtypes = [ctypes.c_char_p]
-            engine_lib.scan_file.restype = ctypes.c_int
-            engine_lib.scan_file.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
-            engine_lib.get_scanner_version.restype = ctypes.c_char_p
-            engine_lib.get_signature_count.restype = ctypes.c_int
-            engine_lib.compute_file_hash.restype = ctypes.c_int
-            engine_lib.compute_file_hash.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
-            engine_lib.init_scanner(None)
-            engine_lib.load_signatures(SIGNATURES_FILE.encode())
-            print("[ShieldPro] Engine module loaded")
-    except Exception as e:
-        print(f"[ShieldPro] Engine load error: {e}")
+@dataclass
+class AppConfig:
+    theme: str = "dark"
+    language: str = "ru"
+    font_size: int = 10
+    scan: ScanSettings = field(default_factory=ScanSettings)
+    profile: ProfileSettings = field(default_factory=ProfileSettings)
+    autostart: bool = False
+    realtime: bool = True
+    auto_update: bool = True
+    sound: bool = True
+    popup: bool = True
+    usb_protection: bool = False
+    firewall_enabled: bool = False
 
-    try:
-        heuristic_path = os.path.join(MODULES_DIR, "heuristic.dll")
-        if os.path.exists(heuristic_path):
-            heuristic_lib = ctypes.CDLL(heuristic_path)
-            heuristic_lib.analyze_file.restype = ctypes.c_void_p
-            heuristic_lib.get_module_version.restype = ctypes.c_char_p
-            print("[ShieldPro] Heuristic module loaded")
-    except Exception as e:
-        print(f"[ShieldPro] Heuristic load error: {e}")
+    @classmethod
+    def load(cls):
+        if SETTINGS_FILE.exists():
+            try:
+                d = json.loads(SETTINGS_FILE.read_text("utf-8"))
+                scan = ScanSettings(**d.get("scan", {}))
+                profile = ProfileSettings(**d.get("profile", {}))
+                return cls(theme=d.get("theme","dark"), language=d.get("language","ru"),
+                          font_size=d.get("font_size",10), scan=scan, profile=profile,
+                          autostart=d.get("autostart",False), realtime=d.get("realtime",True),
+                          auto_update=d.get("auto_update",True), sound=d.get("sound",True),
+                          popup=d.get("popup",True), usb_protection=d.get("usb_protection",False),
+                          firewall_enabled=d.get("firewall_enabled",False))
+            except: pass
+        return cls()
 
-    try:
-        monitor_path = os.path.join(MODULES_DIR, "monitor.dll")
-        if os.path.exists(monitor_path):
-            monitor_lib = ctypes.CDLL(monitor_path)
-            monitor_lib.init_monitor.restype = ctypes.c_int
-            monitor_lib.init_monitor.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]
-            monitor_lib.stop_monitor.restype = None
-            monitor_lib.add_firewall_rule.restype = ctypes.c_int
-            monitor_lib.add_firewall_rule.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-            monitor_lib.get_firewall_rules.restype = ctypes.c_int
-            monitor_lib.clear_firewall_rules.restype = None
-            monitor_lib.get_monitor_version.restype = ctypes.c_char_p
-            monitor_lib.register_autostart.restype = ctypes.c_int
-            monitor_lib.register_autostart.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
-            monitor_lib.unregister_autostart.restype = ctypes.c_int
-            monitor_lib.check_usb_devices.restype = ctypes.c_int
-            monitor_lib.block_autorun.restype = ctypes.c_int
-            monitor_lib.get_connected_drives.restype = ctypes.c_int
-            print("[ShieldPro] Monitor module loaded")
-    except Exception as e:
-        print(f"[ShieldPro] Monitor load error: {e}")
+    def save(self):
+        SETTINGS_FILE.write_text(json.dumps(asdict(self), ensure_ascii=False, indent=2), "utf-8")
 
-    try:
-        updater_path = os.path.join(MODULES_DIR, "updater.dll")
-        if os.path.exists(updater_path):
-            updater_lib = ctypes.CDLL(updater_path)
-            updater_lib.GetUpdaterVersion.restype = ctypes.c_char_p
-            updater_lib.CheckForUpdates.restype = ctypes.c_char_p
-            updater_lib.CheckForUpdates.argtypes = [ctypes.c_char_p]
-            updater_lib.DownloadSignatures.restype = ctypes.c_char_p
-            updater_lib.DownloadSignatures.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
-            updater_lib.GetUpdateStatus.restype = ctypes.c_char_p
-            print("[ShieldPro] Updater module loaded")
-    except Exception as e:
-        print(f"[ShieldPro] Updater load error: {e}")
+    def export_to(self, path):
+        Path(path).write_text(json.dumps(asdict(self), ensure_ascii=False, indent=2), "utf-8")
 
-class PythonScanner:
+    @classmethod
+    def import_from(cls, path):
+        d = json.loads(Path(path).read_text("utf-8"))
+        return cls(theme=d.get("theme","dark"), language=d.get("language","ru"),
+                  font_size=d.get("font_size",10), scan=ScanSettings(**d.get("scan",{})),
+                  profile=ProfileSettings(**d.get("profile",{})),
+                  autostart=d.get("autostart",False), realtime=d.get("realtime",True),
+                  auto_update=d.get("auto_update",True), sound=d.get("sound",True),
+                  popup=d.get("popup",True), usb_protection=d.get("usb_protection",False),
+                  firewall_enabled=d.get("firewall_enabled",False))
+
+cfg = AppConfig.load()
+
+# ─── Scanner Engine ───
+class Scanner:
+    __slots__ = ("signatures", "stats")
     def __init__(self):
-        self.signatures = {}
-        self.load_signatures()
+        self.signatures: dict = {}
+        self.stats = {"total_scans": 0, "threats_detected": 0, "files_quarantined": 0, "last_scan": None, "history": []}
+        self._load_sigs()
+        self._load_stats()
 
-    def load_signatures(self):
-        sig_file = os.path.join(SIGNATURES_DIR, "signatures.txt")
-        if os.path.exists(sig_file):
-            with open(sig_file, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and ':' in line and not line.startswith('#'):
-                        parts = line.split(':', 1)
-                        if len(parts) == 2:
-                            name, hex_sig = parts
-                            try:
-                                self.signatures[name] = bytes.fromhex(hex_sig)
-                            except:
-                                pass
-        print(f"[ShieldPro] Loaded {len(self.signatures)} signatures (Python fallback)")
+    def _load_sigs(self):
+        if SIG_FILE.exists():
+            for line in SIG_FILE.read_text().splitlines():
+                line = line.strip()
+                if line and ':' in line and not line.startswith('#'):
+                    try:
+                        name, hx = line.split(':', 1)
+                        self.signatures[name] = bytes.fromhex(hx)
+                    except: pass
 
-    def scan_file(self, filepath):
-        if not os.path.exists(filepath):
-            return None
+    def scan_file(self, fp):
         try:
-            with open(filepath, 'rb') as f:
+            with open(fp, 'rb') as f:
                 data = f.read(65536)
             for name, sig in self.signatures.items():
-                if len(sig) <= len(data) and sig in data:
-                    return name
-            return None
-        except:
-            return None
+                if sig in data: return name
+        except: pass
+        return None
 
-python_scanner = None
+    def _load_stats(self):
+        sf = DATA_DIR / "stats.json"
+        if sf.exists():
+            try: self.stats.update(json.loads(sf.read_text()))
+            except: pass
 
-def get_python_scanner():
-    global python_scanner
-    if python_scanner is None:
-        python_scanner = PythonScanner()
-    return python_scanner
+    def save_stats(self):
+        (DATA_DIR / "stats.json").write_text(json.dumps(self.stats))
 
-class ScanThread(QThread):
-    progress_signal = pyqtSignal(int, str, str)
-    finished_signal = pyqtSignal(int, list)
-    threat_found_signal = pyqtSignal(str, str, int)
+scanner = Scanner()
 
-    def __init__(self, scan_type, paths):
+# ─── Scan Worker Thread ───
+class ScanWorker(QThread):
+    progress = pyqtSignal(int, str)
+    threat = pyqtSignal(str, str)
+    done = pyqtSignal(int, int)
+    stopped = False
+
+    def __init__(self, paths, max_size):
         super().__init__()
-        self.scan_type = scan_type
-        self.paths = paths
-        self.running = True
-        self.paused = False
+        self.paths, self.max_size = paths, max_size
 
     def run(self):
-        results = []
-        total_files = 0
-
-        def scan_directory(path):
-            nonlocal total_files
+        count = threats = 0
+        for p in self.paths:
+            if self.stopped: break
             try:
-                for root, dirs, files in os.walk(path):
-                    if not self.running:
-                        return
-                    while self.paused and self.running:
-                        time.sleep(0.1)
-                    for file in files:
-                        if not self.running:
-                            return
-                        filepath = os.path.join(root, file)
-                        total_files += 1
-                        self.progress_signal.emit(total_files, filepath, "Scanning...")
-
-                        threat_name_str = None
-                        threat_type = 1
-                        result = 0
-
-                        if engine_lib:
+                if os.path.isfile(p) and os.path.getsize(p) <= self.max_size:
+                    count += 1
+                    if scanner.scan_file(p):
+                        threats += 1
+                        self.threat.emit(p, scanner.scan_file(p))
+                elif os.path.isdir(p):
+                    for root, _, files in os.walk(p):
+                        if self.stopped: break
+                        for f in files:
+                            if self.stopped: break
+                            fp = os.path.join(root, f)
                             try:
-                                threat_name = ctypes.create_string_buffer(256)
-                                threat_type_ct = ctypes.c_int(0)
-                                result = engine_lib.scan_file(
-                                    filepath.encode(),
-                                    threat_name,
-                                    256,
-                                    ctypes.byref(threat_type_ct)
-                                )
-                                if result > 0:
-                                    threat_name_str = threat_name.value.decode('utf-8', errors='ignore')
-                            except:
-                                pass
+                                if os.path.getsize(fp) <= self.max_size:
+                                    count += 1
+                                    t = scanner.scan_file(fp)
+                                    if t:
+                                        threats += 1
+                                        self.threat.emit(fp, t)
+                                    self.progress.emit(count, fp)
+                            except: pass
+            except: pass
+        self.done.emit(count, threats)
 
-                        if not result or not threat_name_str:
-                            ps = get_python_scanner()
-                            threat_name_str = ps.scan_file(filepath)
+    def stop(self): self.stopped = True
 
-                        if threat_name_str:
-                            results.append((filepath, threat_name_str, threat_type))
-                            self.threat_found_signal.emit(filepath, threat_name_str, threat_type)
-            except Exception as e:
-                print(f"Scan error: {e}")
+# ─── Stylesheet Generator ───
+def qss(c):
+    return f"""
+    QMainWindow, QWidget {{ background: {c["bg"]}; color: {c["text"]}; font-size: {cfg.font_size}px; }}
+    QTabWidget::pane {{ border: none; background: {c["bg"]}; }}
+    QTabBar::tab {{ background: {c["card"]}; color: {c["text2"]}; padding: 10px 20px; border: none; font-size: {cfg.font_size}px; border-top-left-radius: 6px; border-top-right-radius: 6px; }}
+    QTabBar::tab:selected {{ background: {c["surface"]}; color: {c["text"]}; border-top: 2px solid {c["primary"]}; }}
+    QTabBar::tab:hover {{ background: {c["border"]}; }}
+    QPushButton {{ background: {c["primary"]}; border: none; border-radius: 6px; color: white; padding: 8px 16px; font-weight: bold; font-size: {cfg.font_size}px; }}
+    QPushButton:hover {{ background: {c["primary_hover"]}; }}
+    QPushButton:disabled {{ background: {c["border"]}; color: {c["text2"]}; }}
+    QPushButton.danger {{ background: {c["danger"]}; }}
+    QPushButton.danger:hover {{ background: #B71C1C; }}
+    QPushButton.success {{ background: {c["success"]}; }}
+    QGroupBox {{ border: 1px solid {c["border"]}; border-radius: 8px; margin-top: 8px; padding: 12px; color: {c["text"]}; font-weight: bold; }}
+    QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}
+    QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{ background: {c["card"]}; color: {c["text"]}; border: 1px solid {c["border"]}; border-radius: 5px; padding: 6px; font-size: {cfg.font_size}px; }}
+    QTableWidget {{ background: {c["surface"]}; color: {c["text"]}; border: none; gridline-color: {c["border"]}; font-size: {cfg.font_size}px; }}
+    QTableWidget::item {{ padding: 6px; border-bottom: 1px solid {c["border"]}; }}
+    QTableWidget::item:selected {{ background: {c["primary"]}; }}
+    QHeaderView::section {{ background: {c["card"]}; color: {c["text"]}; padding: 8px; border: none; font-weight: bold; }}
+    QProgressBar {{ background: {c["card"]}; border: none; border-radius: 5px; height: 20px; text-align: center; }}
+    QProgressBar::chunk {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {c["primary"]}, stop:1 {c["primary_hover"]}); border-radius: 5px; }}
+    QScrollBar:vertical {{ background: {c["card"]}; width: 8px; border-radius: 4px; }}
+    QScrollBar::handle:vertical {{ background: {c["border"]}; border-radius: 4px; min-height: 20px; }}
+    QScrollBar::handle:vertical:hover {{ background: {c["text2"]}; }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QCheckBox {{ color: {c["text"]}; spacing: 8px; }}
+    QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 4px; border: 2px solid {c["border"]}; }}
+    QCheckBox::indicator:checked {{ background: {c["primary"]}; border-color: {c["primary"]}; }}
+    QLabel {{ color: {c["text"]}; }}
+    QTextEdit {{ background: {c["surface"]}; color: {c["text"]}; border: 1px solid {c["border"]}; border-radius: 5px; }}
+    QRadioButton {{ color: {c["text"]}; }}
+    QRadioButton::indicator {{ width: 16px; height: 16px; border-radius: 8px; border: 2px solid {c["border"]}; }}
+    QRadioButton::indicator:checked {{ background: {c["primary"]}; border-color: {c["primary"]}; }}
+    QSlider::groove:horizontal {{ background: {c["card"]}; height: 6px; border-radius: 3px; }}
+    QSlider::handle:horizontal {{ background: {c["primary"]}; width: 16px; margin: -5px 0; border-radius: 8px; }}
+    QSlider::sub-page:horizontal {{ background: {c["primary"]}; border-radius: 3px; }}
+    """
 
-        for path in self.paths:
-            if os.path.isfile(path):
-                total_files += 1
-                self.progress_signal.emit(total_files, path, "Scanning...")
-                threat_name_str = None
-                threat_type = 1
-                result = 0
+# ─── Helper: Card Widget ───
+def card(icon, title, value, color, parent=None):
+    f = QFrame(parent); f.setStyleSheet(f"background: {THEMES[cfg.theme]['card']}; border-left: 3px solid {color}; border-radius: 8px;")
+    lay = QVBoxLayout(f); lay.setSpacing(2)
+    lay.addWidget(QLabel(icon), alignment=Qt.AlignmentFlag.AlignCenter)
+    tl = QLabel(title); tl.setStyleSheet(f"color: {THEMES[cfg.theme]['text2']}; font-size: {cfg.font_size-1}px;"); lay.addWidget(tl, alignment=Qt.AlignmentFlag.AlignCenter)
+    vl = QLabel(str(value)); vl.setStyleSheet(f"color: {THEMES[cfg.theme]['text']}; font-size: {cfg.font_size+4}px; font-weight: bold;"); lay.addWidget(vl, alignment=Qt.AlignmentFlag.AlignCenter)
+    return f
 
-                if engine_lib:
-                    try:
-                        threat_name = ctypes.create_string_buffer(256)
-                        threat_type_ct = ctypes.c_int(0)
-                        result = engine_lib.scan_file(
-                            path.encode(),
-                            threat_name,
-                            256,
-                            ctypes.byref(threat_type_ct)
-                        )
-                        if result > 0:
-                            threat_name_str = threat_name.value.decode('utf-8', errors='ignore')
-                    except:
-                        pass
-
-                if not result or not threat_name_str:
-                    ps = get_python_scanner()
-                    threat_name_str = ps.scan_file(path)
-
-                if threat_name_str:
-                    results.append((path, threat_name_str, threat_type))
-                    self.threat_found_signal.emit(path, threat_name_str, threat_type)
-            elif os.path.isdir(path):
-                scan_directory(path)
-
-        self.finished_signal.emit(len(results), results)
-
-    def stop(self):
-        self.running = False
-
-    def pause(self):
-        self.paused = True
-
-    def resume(self):
-        self.paused = False
-
-class ModernButton(QPushButton):
-    def __init__(self, text, parent=None):
-        super().__init__(text, parent)
-        self.setCursor(QCursor(Qt.PointingHandCursor))
-        self.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0078D7, stop:1 #0098FF);
-                border: none;
-                border-radius: 6px;
-                color: white;
-                font-weight: bold;
-                padding: 10px 20px;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #106EBE, stop:1 #0078D7);
-            }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #005A9E, stop:1 #106EBE);
-            }
-            QPushButton:disabled {
-                background: #555;
-                color: #888;
-            }
-        """)
-
-class StatusIndicator(QWidget):
-    def __init__(self, status="protected", parent=None):
-        super().__init__(parent)
-        self.status = status
-        self.setMinimumWidth(200)
-        self.setMinimumHeight(60)
-
-    def set_status(self, status):
-        self.status = status
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-
-        gradient = QLinearGradient(0, 0, self.width(), 0)
-        if self.status == "protected":
-            gradient.setColorAt(0, QColor("#2E7D32"))
-            gradient.setColorAt(1, QColor("#4CAF50"))
-            status_text = "Защита включена"
-            icon = "🛡️"
-        elif self.status == "warning":
-            gradient.setColorAt(0, QColor("#F57C00"))
-            gradient.setColorAt(1, QColor("#FF9800"))
-            status_text = "Внимание"
-            icon = "⚠️"
-        else:
-            gradient.setColorAt(0, QColor("#C62828"))
-            gradient.setColorAt(1, QColor("#F44336"))
-            status_text = "Защита отключена"
-            icon = "⛔"
-
-        painter.setBrush(QBrush(gradient))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(0, 0, self.width(), self.height(), 10, 10)
-
-        painter.setPen(Qt.white)
-        font = QFont("Segoe UI", 14, QFont.Bold)
-        painter.setFont(font)
-        painter.drawText(50, 25, f"{icon} {status_text}")
-        font_small = QFont("Segoe UI", 10)
-        painter.setFont(font_small)
-        painter.drawText(50, 42, f"ShieldPro v1.0.0 | {datetime.datetime.now().strftime('%H:%M')}")
-
+# ─── Main Window ───
 class ShieldProGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.scan_thread = None
-        self.is_scanning = False
-        self.is_protected = True
-        self.threats_today = 0
-        self.settings = QSettings("RuGuard", "ShieldPro")
-        self.log_events = []
-        self.scan_results = []
-        self.quarantine_items = []
-        self.firewall_rules = []
-        self.init_ui()
-        self.load_quarantine()
-        self.load_log()
-        load_native_modules()
-        self.start_realtime_protection()
-        self.tray_icon.show()
+        self.scan_worker: Optional[ScanWorker] = None
+        self.quarantine: list = []
+        self.log_events: list = []
+        self.scan_history: list = []
+        self._load_quarantine()
+        self._load_log()
+        self._load_history()
+        self._init_ui()
+        self._load_native()
 
-    def init_ui(self):
-        self.setWindowTitle("ShieldPro - Антивирусная защита")
-        self.setMinimumSize(1100, 750)
-        self.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
-
-        palette = QPalette()
-        palette.setColor(QPalette.Window, QColor("#1E1E1E"))
-        palette.setColor(QPalette.WindowText, Qt.white)
-        palette.setColor(QPalette.Base, QColor("#252526"))
-        palette.setColor(QPalette.AlternateBase, QColor("#2D2D30"))
-        palette.setColor(QPalette.ToolTipBase, QColor("#3E3E42"))
-        palette.setColor(QPalette.ToolTipText, Qt.white)
-        palette.setColor(QPalette.Text, Qt.white)
-        palette.setColor(QPalette.Button, QColor("#3E3E42"))
-        palette.setColor(QPalette.ButtonText, Qt.white)
-        palette.setColor(QPalette.BrightText, Qt.red)
-        palette.setColor(QPalette.Highlight, QColor("#0078D7"))
-        palette.setColor(QPalette.HighlightedText, Qt.white)
-        self.setPalette(palette)
-
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
-        main_layout = QVBoxLayout(self.central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-
-        self.create_header(main_layout)
-        self.create_tabs(main_layout)
-        self.create_status_bar(main_layout)
-        self.create_tray_icon()
-
-    def create_header(self, layout):
-        header = QFrame()
-        header.setStyleSheet("background: #252526; border-bottom: 1px solid #3E3E42;")
-        header.setFixedHeight(70)
-        header_layout = QHBoxLayout(header)
-
-        self.status_indicator = StatusIndicator("protected")
-        header_layout.addWidget(self.status_indicator)
-
-        header_layout.addStretch()
-
-        self.btn_minimize = QPushButton("─")
-        self.btn_minimize.setFixedSize(40, 30)
-        self.btn_minimize.setStyleSheet("QPushButton { background: transparent; border: none; color: white; font-size: 18px; } QPushButton:hover { background: #3E3E42; }")
-        self.btn_minimize.clicked.connect(self.showMinimized)
-
-        self.btn_maximize = QPushButton("☐")
-        self.btn_maximize.setFixedSize(40, 30)
-        self.btn_maximize.setStyleSheet("QPushButton { background: transparent; border: none; color: white; font-size: 18px; } QPushButton:hover { background: #3E3E42; }")
-        self.btn_maximize.clicked.connect(self.toggle_maximize)
-
-        self.btn_close = QPushButton("✕")
-        self.btn_close.setFixedSize(40, 30)
-        self.btn_close.setStyleSheet("QPushButton { background: transparent; border: none; color: white; font-size: 14px; } QPushButton:hover { background: #C42B1C; }")
-        self.btn_close.clicked.connect(self.close)
-
-        btn_layout = QVBoxLayout()
-        btn_layout.addWidget(self.btn_minimize)
-        btn_layout.addWidget(self.btn_maximize)
-        btn_layout.addWidget(self.btn_close)
-        btn_layout.setSpacing(0)
-        header_layout.addLayout(btn_layout)
-
-        layout.addWidget(header)
-
-    def toggle_maximize(self):
-        if self.isMaximized():
-            self.showNormal()
-            self.btn_maximize.setText("☐")
-        else:
-            self.showMaximized()
-            self.btn_maximize.setText("❐")
-
-    def create_tabs(self, layout):
+    def _init_ui(self):
+        c = THEMES[cfg.theme]
+        self.setWindowTitle(t("title")); self.setMinimumSize(1100, 750)
+        self.setStyleSheet(qss(c))
+        cw = QWidget(); self.setCentralWidget(cw)
+        main = QVBoxLayout(cw); main.setContentsMargins(0,0,0,0); main.setSpacing(0)
+        main.addWidget(self._header())
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane { border: none; background: #1E1E1E; }
-            QTabBar::tab { background: #2D2D30; color: #AAAAAA; padding: 12px 25px; border: none; font-size: 13px; }
-            QTabBar::tab:selected { background: #1E1E1E; color: white; border-top: 2px solid #0078D7; }
-            QTabBar::tab:hover { background: #3E3E42; }
-        """)
+        self._build_tabs()
+        main.addWidget(self.tabs)
+        sb = QStatusBar(); sb.setStyleSheet(f"background:{c['surface']}; color:{c['text2']}; border-top:1px solid {c['border']};")
+        sb.showMessage(f"ShieldPro v2.0 | {t('protection')}"); self.setStatusBar(sb)
+        self._tray()
 
-        self.create_dashboard_tab()
-        self.create_scan_tab()
-        self.create_firewall_tab()
-        self.create_quarantine_tab()
-        self.create_log_tab()
-        self.create_settings_tab()
+    def _header(self):
+        c = THEMES[cfg.theme]
+        h = QFrame(); h.setStyleSheet(f"background:{c['surface']}; border-bottom:1px solid {c['border']};"); h.setFixedHeight(60)
+        lay = QHBoxLayout(h); lay.setContentsMargins(20,5,10,5)
+        lay.addWidget(QLabel("🛡️ ShieldPro"), alignment=Qt.AlignmentFlag.AlignLeft)
+        lay.addStretch()
+        for txt, slot in [("─", self.showMinimized), ("☐", self._toggle_max), ("✕", self.close)]:
+            b = QPushButton(txt); b.setFixedSize(35,28); b.setStyleSheet(f"QPushButton{{background:transparent;border:none;color:{c['text']};font-size:14px;}}QPushButton:hover{{background:{c['border']};}}")
+            b.clicked.connect(slot); lay.addWidget(b)
+        return h
 
-        layout.addWidget(self.tabs)
+    def _toggle_max(self):
+        self.showMaximized() if not self.isMaximized() else self.showNormal()
 
-    def create_dashboard_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(30, 30, 30, 30)
-        layout.setSpacing(20)
+    def _build_tabs(self):
+        self.tabs.addTab(self._tab_dashboard(), t("dashboard"))
+        self.tabs.addTab(self._tab_scan(), t("scan"))
+        self.tabs.addTab(self._tab_quarantine(), t("quarantine"))
+        self.tabs.addTab(self._tab_log(), t("log"))
+        self.tabs.addTab(self._tab_settings(), t("settings"))
+        self.tabs.addTab(self._tab_profile(), t("profile"))
 
-        title = QLabel("📊 Панель управления")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
-        layout.addWidget(title)
+    # ─── Dashboard ───
+    def _tab_dashboard(self):
+        w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25); lay.setSpacing(15)
+        lay.addWidget(QLabel("📊 " + t("dashboard").split()[1]), alignment=Qt.AlignmentFlag.AlignCenter)
+        cards = QHBoxLayout()
+        cards.addWidget(card("🛡️", t("protection").split()[1], "Active", THEMES[cfg.theme]["success"]))
+        cards.addWidget(card("🦠", t("total_threats"), scanner.stats["threats_detected"], THEMES[cfg.theme]["danger"]))
+        cards.addWidget(card("🔍", t("last_scan"), scanner.stats.get("last_scan", t("never")), THEMES[cfg.theme]["primary"]))
+        cards.addWidget(card("📝", t("quarantined"), len(self.quarantine), THEMES[cfg.theme]["warning"]))
+        lay.addLayout(cards)
+        btns = QHBoxLayout()
+        for txt, fn in [(t("quick_scan"), self._quick_scan), (t("full_scan"), self._full_scan), (t("update_db"), self._update_db)]:
+            b = QPushButton(txt); b.clicked.connect(fn); btns.addWidget(b)
+        lay.addLayout(btns); lay.addStretch()
+        return w
 
-        stats_group = QFrame()
-        stats_group.setStyleSheet("background: #252526; border-radius: 10px; padding: 20px;")
-        stats_layout = QHBoxLayout(stats_group)
+    # ─── Scan Tab ───
+    def _tab_scan(self):
+        w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
+        self.scan_type = QComboBox(); self.scan_type.addItems([t("quick_scan"), t("full_scan"), t("custom_scan")])
+        self.custom_path = None
+        row = QHBoxLayout(); row.addWidget(self.scan_type)
+        sel = QPushButton(t("custom_scan")); sel.clicked.connect(self._select_folder); row.addWidget(sel)
+        self.path_lbl = QLabel(t("select_folder")); row.addWidget(self.path_lbl); row.addStretch()
+        lay.addLayout(row)
+        self.progress = QProgressBar(); lay.addWidget(self.progress)
+        self.status_lbl = QLabel(t("no_threats")); lay.addWidget(self.status_lbl)
+        btn_row = QHBoxLayout()
+        self.btn_start = QPushButton(t("start")); self.btn_start.clicked.connect(self._start_scan); btn_row.addWidget(self.btn_start)
+        self.btn_pause = QPushButton(t("pause")); self.btn_pause.setEnabled(False); self.btn_pause.clicked.connect(self._pause_scan); btn_row.addWidget(self.btn_pause)
+        self.btn_stop = QPushButton(t("stop")); self.btn_stop.setEnabled(False); self.btn_stop.clicked.connect(self._stop_scan); btn_row.addWidget(self.btn_stop)
+        lay.addLayout(btn_row)
+        self.threats_table = QTableWidget(); self.threats_table.setColumnCount(3)
+        self.threats_table.setHorizontalHeaderLabels(["Файл", "Угроза", "Действие"]); self.threats_table.horizontalHeader().setStretchLastSection(True)
+        lay.addWidget(self.threats_table)
+        return w
 
-        self.stat_protection = self.create_stat_card("🛡️", "Защита", "Активна", "#4CAF50")
-        self.stat_threats = self.create_stat_card("🦠", "Угроз сегодня", "0", "#F44336")
-        self.stat_last_scan = self.create_stat_card("🔍", "Последнее сканирование", "Не проводилось", "#2196F3")
-        self.stat_signatures = self.create_stat_card("📝", "База сигнатур", "Загружена", "#9C27B0")
+    def _select_folder(self):
+        d = QFileDialog.getExistingDirectory(self, t("custom_scan"))
+        if d: self.custom_path = d; self.path_lbl.setText(d)
 
-        stats_layout.addWidget(self.stat_protection)
-        stats_layout.addWidget(self.stat_threats)
-        stats_layout.addWidget(self.stat_last_scan)
-        stats_layout.addWidget(self.stat_signatures)
-        layout.addWidget(stats_group)
+    def _start_scan(self):
+        idx = self.scan_type.currentIndex()
+        paths = [os.path.expanduser("~/Downloads"), os.path.expanduser("~/Documents")] if idx == 0 else \
+                [os.path.expandvars("%SystemRoot%"), os.path.expanduser("~")] if idx == 1 else \
+                [self.custom_path] if self.custom_path else None
+        if not paths or not paths[0]:
+            QMessageBox.warning(self, t("warning"), t("select_folder")); return
+        self.btn_start.setEnabled(False); self.btn_pause.setEnabled(True); self.btn_stop.setEnabled(True)
+        self.threats_table.setRowCount(0)
+        max_sz = cfg.scan.max_file_size_mb * 1024 * 1024
+        self.scan_worker = ScanWorker(paths, max_sz)
+        self.scan_worker.progress.connect(lambda c, f: self.status_lbl.setText(f"Scanning: {os.path.basename(f)}"))
+        self.scan_worker.threat.connect(self._add_threat)
+        self.scan_worker.done.connect(self._scan_done)
+        self.scan_worker.start()
+        self._add_history(t("quick_scan") if idx==0 else t("full_scan") if idx==1 else t("custom_scan"), "running")
 
-        quick_actions = QLabel("⚡ Быстрые действия")
-        quick_actions.setStyleSheet("font-size: 18px; font-weight: bold; color: white;")
-        layout.addWidget(quick_actions)
+    def _pause_scan(self):
+        if self.scan_worker:
+            if self.scan_worker.isRunning(): self.scan_worker.wait(); self.btn_pause.setText(t("resume"))
+            else: self.scan_worker.start(); self.btn_pause.setText(t("pause"))
 
-        actions_layout = QHBoxLayout()
-        btn_quick_scan = ModernButton("🚀 Быстрое сканирование")
-        btn_quick_scan.clicked.connect(self.quick_scan)
-        btn_full_scan = ModernButton("🔍 Полное сканирование")
-        btn_full_scan.clicked.connect(self.full_scan)
-        btn_update = ModernButton("📥 Обновить базу")
-        btn_update.clicked.connect(self.update_signatures)
+    def _stop_scan(self):
+        if self.scan_worker: self.scan_worker.stop(); self.scan_worker.wait()
+        self._scan_finalize(0)
 
-        actions_layout.addWidget(btn_quick_scan)
-        actions_layout.addWidget(btn_full_scan)
-        actions_layout.addWidget(btn_update)
-        layout.addLayout(actions_layout)
+    def _add_threat(self, fp, threat):
+        r = self.threats_table.rowCount(); self.threats_table.insertRow(r)
+        self.threats_table.setItem(r, 0, QTableWidgetItem(fp))
+        self.threats_table.setItem(r, 1, QTableWidgetItem(threat))
+        qb = QPushButton("Карантин"); qb.clicked.connect(lambda: self._quarantine_file(fp, threat))
+        self.threats_table.setCellWidget(r, 2, qb)
+        if cfg.scan.auto_quarantine: self._quarantine_file(fp, threat)
 
-        layout.addStretch()
-
-    def create_stat_card(self, icon, title, value, color):
-        card = QFrame()
-        card.setStyleSheet(f"background: #2D2D30; border-left: 4px solid {color}; border-radius: 8px; padding: 15px;")
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(5)
-
-        icon_label = QLabel(icon)
-        icon_label.setStyleSheet("font-size: 28px;")
-        card_layout.addWidget(icon_label)
-
-        title_label = QLabel(title)
-        title_label.setStyleSheet("color: #AAAAAA; font-size: 12px;")
-        card_layout.addWidget(title_label)
-
-        value_label = QLabel(value)
-        value_label.setObjectName("stat_value")
-        value_label.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
-        card_layout.addWidget(value_label)
-
-        return card
-
-    def create_scan_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(30, 30, 30, 30)
-
-        title = QLabel("🔍 Сканирование")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
-        layout.addWidget(title)
-
-        scan_options = QGroupBox("Тип сканирования")
-        scan_options.setStyleSheet("QGroupBox { border: 1px solid #3E3E42; border-radius: 8px; margin-top: 10px; padding: 15px; color: white; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 5px; }")
-        scan_layout = QHBoxLayout(scan_options)
-
-        self.scan_type_combo = QComboBox()
-        self.scan_type_combo.addItems(["Быстрое сканирование", "Полное сканирование", "Выборочное сканирование"])
-        self.scan_type_combo.setStyleSheet("""
-            QComboBox {
-                background: #3E3E42;
-                color: white;
-                border: 1px solid #555;
-                border-radius: 5px;
-                padding: 8px;
-                min-width: 200px;
-            }
-            QComboBox::drop-down { border: none; }
-            QComboBox::down-arrow { image: none; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid white; }
-        """)
-        scan_layout.addWidget(self.scan_type_combo)
-
-        btn_select_folder = QPushButton("📁 Выбрать папку")
-        btn_select_folder.setStyleSheet("QPushButton { background: #3E3E42; color: white; border: 1px solid #555; border-radius: 5px; padding: 8px 15px; } QPushButton:hover { background: #4E4E52; }")
-        btn_select_folder.clicked.connect(self.select_scan_folder)
-        scan_layout.addWidget(btn_select_folder)
-
-        self.selected_path_label = QLabel("Не выбрано")
-        self.selected_path_label.setStyleSheet("color: #AAAAAA;")
-        scan_layout.addWidget(self.selected_path_label)
-        scan_layout.addStretch()
-
-        layout.addWidget(scan_options)
-
-        self.scan_progress = QProgressBar()
-        self.scan_progress.setStyleSheet("""
-            QProgressBar {
-                background: #3E3E42;
-                border: none;
-                border-radius: 5px;
-                height: 25px;
-                text-align: center;
-                color: white;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0078D7, stop:1 #0098FF);
-                border-radius: 5px;
-            }
-        """)
-        layout.addWidget(self.scan_progress)
-
-        self.scan_status = QLabel("Готов к сканированию")
-        self.scan_status.setStyleSheet("color: #AAAAAA;")
-        layout.addWidget(self.scan_progress, 0, Qt.AlignBottom)
-
-        btn_layout = QHBoxLayout()
-        self.btn_start_scan = ModernButton("▶ Начать сканирование")
-        self.btn_start_scan.clicked.connect(self.start_scan)
-        self.btn_pause_scan = ModernButton("⏸ Пауза")
-        self.btn_pause_scan.setEnabled(False)
-        self.btn_pause_scan.clicked.connect(self.pause_scan)
-        self.btn_stop_scan = ModernButton("⏹ Остановить")
-        self.btn_stop_scan.setEnabled(False)
-        self.btn_stop_scan.clicked.connect(self.stop_scan)
-
-        btn_layout.addWidget(self.btn_start_scan)
-        btn_layout.addWidget(self.btn_pause_scan)
-        btn_layout.addWidget(self.btn_stop_scan)
-        layout.addLayout(btn_layout)
-
-        results_group = QGroupBox("Найденные угрозы")
-        results_group.setStyleSheet("QGroupBox { border: 1px solid #3E3E42; border-radius: 8px; margin-top: 10px; padding: 15px; color: white; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 5px; }")
-        results_layout = QVBoxLayout(results_group)
-
-        self.threats_table = QTableWidget()
-        self.threats_table.setStyleSheet("""
-            QTableWidget {
-                background: #1E1E1E;
-                color: white;
-                border: none;
-                gridline-color: #3E3E42;
-            }
-            QTableWidget::item { padding: 8px; border-bottom: 1px solid #3E3E42; }
-            QTableWidget::item:selected { background: #0078D7; }
-            QHeaderView::section { background: #2D2D30; color: white; padding: 8px; border: none; }
-        """)
-        self.threats_table.setColumnCount(4)
-        self.threats_table.setHorizontalHeaderLabels(["Файл", "Угроза", "Тип", "Действие"])
-        self.threats_table.horizontalHeader().setStretchLastSection(True)
-        results_layout.addWidget(self.threats_table)
-
-        layout.addWidget(results_group)
-
-    def select_scan_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Выберите папку для сканирования")
-        if folder:
-            self.selected_path_label.setText(folder)
-
-    def start_scan(self):
-        scan_type = self.scan_type_combo.currentIndex()
-        paths = []
-
-        if scan_type == 0:
-            paths = [os.path.expanduser("~/Downloads"), os.path.expanduser("~/Documents")]
-        elif scan_type == 1:
-            paths = [os.path.expandvars("%SystemRoot%"), os.path.expanduser("~")]
-        else:
-            path = self.selected_path_label.text()
-            if path and path != "Не выбрано":
-                paths = [path]
-            else:
-                QMessageBox.warning(self, "Внимание", "Выберите папку для сканирования!")
-                return
-
-        self.btn_start_scan.setEnabled(False)
-        self.btn_pause_scan.setEnabled(True)
-        self.btn_stop_scan.setEnabled(True)
-        self.is_scanning = True
-
-        self.scan_thread = ScanThread(scan_type, paths)
-        self.scan_thread.progress_signal.connect(self.update_scan_progress)
-        self.scan_thread.threat_found_signal.connect(self.add_threat_found)
-        self.scan_thread.finished_signal.connect(self.scan_finished)
-        self.scan_thread.start()
-
-    def update_scan_progress(self, count, filepath, status):
-        self.scan_progress.setValue(count % 100)
-        self.scan_status.setText(f"Сканирование: {os.path.basename(filepath)}")
-
-    def add_threat_found(self, filepath, threat, threat_type):
-        self.threats_today += 1
-        self.stat_threats.findChild(QLabel, "stat_value").setText(str(self.threats_today))
-        self.log_event(f"Обнаружена угроза: {threat} в файле {filepath}")
-        row = self.threats_table.rowCount()
-        self.threats_table.insertRow(row)
-        self.threats_table.setItem(row, 0, QTableWidgetItem(filepath))
-        self.threats_table.setItem(row, 1, QTableWidgetItem(threat))
-        self.threats_table.setItem(row, 2, QTableWidgetItem("Вирус" if threat_type == 1 else "Подозрительный"))
-
-        btn_quarantine = QPushButton("Карантин")
-        btn_quarantine.clicked.connect(lambda: self.move_to_quarantine(filepath, threat))
-        self.threats_table.setCellWidget(row, 3, btn_quarantine)
-
-    def move_to_quarantine(self, filepath, threat):
+    def _quarantine_file(self, fp, threat):
         try:
-            os.makedirs(QUARANTINE_DIR, exist_ok=True)
-            filename = os.path.basename(filepath)
-            encrypted_name = self.encrypt_filename(filename)
-            dest_path = os.path.join(QUARANTINE_DIR, encrypted_name + ".quar")
-            shutil.move(filepath, dest_path)
+            if not os.path.exists(fp): return
+            os.makedirs(QUAR_DIR, exist_ok=True)
+            qn = f"{os.path.basename(fp)}_{int(time.time())}"
+            qp = QUAR_DIR / qn; shutil.copy2(fp, qp); os.remove(fp)
+            self.quarantine.append({"original": fp, "quarantine": str(qp), "threat": threat, "date": datetime.datetime.now().isoformat()})
+            self._save_quarantine()
+            scanner.stats["files_quarantined"] += 1; scanner.stats["threats_detected"] += 1; scanner.save_stats()
+            self._log(f"Quarantined: {threat} - {fp}")
+        except Exception as e: self._log(f"Quarantine error: {e}")
 
-            self.quarantine_items.append({
-                "original_path": filepath,
-                "quarantine_path": dest_path,
-                "threat": threat,
-                "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
-            self.save_quarantine()
-            self.log_event(f"Файл перемещен в карантин: {filepath}")
-            QMessageBox.information(self, "Карантин", "Файл успешно перемещен в карантин!")
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось переместить файл: {e}")
+    def _scan_done(self, count, threats):
+        self._scan_finalize(threats)
 
-    def encrypt_filename(self, filename):
-        key = b"ShieldPro2024"
-        encrypted = bytearray(filename.encode())
-        for i in range(len(encrypted)):
-            encrypted[i] ^= key[i % len(key)]
-        return encrypted.hex()[:32]
+    def _scan_finalize(self, threats):
+        self.btn_start.setEnabled(True); self.btn_pause.setEnabled(False); self.btn_stop.setEnabled(False)
+        self.status_lbl.setText(f"{t('scan_done')}. {t('threats_count')}: {threats}")
+        scanner.stats["total_scans"] += 1; scanner.stats["last_scan"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); scanner.save_stats()
+        self._update_history(status=t("completed") if threats >= 0 else t("stopped"), files_scanned=0, threats_found=threats)
+        self._log(f"Scan done. Threats: {threats}")
 
-    def pause_scan(self):
-        if self.scan_thread:
-            if self.btn_pause_scan.text() == "⏸ Пауза":
-                self.scan_thread.pause()
-                self.btn_pause_scan.setText("▶ Продолжить")
-            else:
-                self.scan_thread.resume()
-                self.btn_pause_scan.setText("⏸ Пауза")
+    def _quick_scan(self): self.tabs.setCurrentIndex(1); self.scan_type.setCurrentIndex(0); self._start_scan()
+    def _full_scan(self): self.tabs.setCurrentIndex(1); self.scan_type.setCurrentIndex(1); self._start_scan()
+    def _update_db(self): QMessageBox.information(self, t("update_db"), "Demo mode")
 
-    def stop_scan(self):
-        if self.scan_thread:
-            self.scan_thread.stop()
-            self.scan_thread.wait()
-        self.is_scanning = False
-        self.btn_start_scan.setEnabled(True)
-        self.btn_pause_scan.setEnabled(False)
-        self.btn_stop_scan.setEnabled(False)
-        self.scan_status.setText("Сканирование остановлено")
+    # ─── Quarantine Tab ───
+    def _tab_quarantine(self):
+        w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
+        lay.addWidget(QLabel("📛 " + t("quarantine").split()[1]))
+        self.quar_table = QTableWidget(); self.quar_table.setColumnCount(4)
+        self.quar_table.setHorizontalHeaderLabels(["Путь", "Угроза", "Дата", "Действия"]); self.quar_table.horizontalHeader().setStretchLastSection(True)
+        lay.addWidget(self.quar_table)
+        btns = QHBoxLayout()
+        ref = QPushButton(t("refresh")); ref.clicked.connect(self._refresh_quar); btns.addWidget(ref)
+        del_all = QPushButton(t("delete_all")); del_all.setStyleSheet("QPushButton.danger"); del_all.clicked.connect(self._clear_quar); btns.addWidget(del_all)
+        lay.addLayout(btns); self._refresh_quar()
+        return w
 
-    def scan_finished(self, threat_count, results):
-        self.is_scanning = False
-        self.btn_start_scan.setEnabled(True)
-        self.btn_pause_scan.setEnabled(False)
-        self.btn_stop_scan.setEnabled(False)
-        self.scan_progress.setValue(100)
-        self.scan_status.setText(f"Сканирование завершено. Найдено угроз: {threat_count}")
-        self.stat_last_scan.findChild(QLabel, "stat_value").setText(datetime.datetime.now().strftime("%H:%M %d.%m.%Y"))
-        self.log_event(f"Сканирование завершено. Найдено угроз: {threat_count}")
+    def _refresh_quar(self):
+        self.quar_table.setRowCount(0)
+        if not self.quarantine: self.quar_table.insertRow(0); self.quar_table.setItem(0, 0, QTableWidgetItem(t("quarantine_empty"))); return
+        for i, item in enumerate(self.quarantine):
+            self.quar_table.insertRow(i)
+            self.quar_table.setItem(i, 0, QTableWidgetItem(item["original"]))
+            self.quar_table.setItem(i, 1, QTableWidgetItem(item["threat"]))
+            self.quar_table.setItem(i, 2, QTableWidgetItem(item["date"]))
+            rb = QPushButton("Restore"); rb.clicked.connect(lambda _, x=item: self._restore_quar(x))
+            db = QPushButton("Delete"); db.clicked.connect(lambda _, x=item: self._delete_quar(x))
+            cw = QWidget(); cl = QHBoxLayout(cw); cl.setContentsMargins(0,0,0,0); cl.addWidget(rb); cl.addWidget(db)
+            self.quar_table.setCellWidget(i, 3, cw)
 
-    def quick_scan(self):
-        self.tabs.setCurrentIndex(1)
-        self.scan_type_combo.setCurrentIndex(0)
-        self.start_scan()
-
-    def full_scan(self):
-        self.tabs.setCurrentIndex(1)
-        self.scan_type_combo.setCurrentIndex(1)
-        self.start_scan()
-
-    def update_signatures(self):
-        self.log_event("Запуск обновления сигнатур...")
-        QMessageBox.information(self, "Обновление", "Проверка обновлений...\n\n(В демо-режиме обновление недоступно)")
-
-    def create_firewall_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(30, 30, 30, 30)
-
-        title = QLabel("🛡️ Файрвол")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
-        layout.addWidget(title)
-
-        rule_group = QGroupBox("Добавить правило")
-        rule_group.setStyleSheet("QGroupBox { border: 1px solid #3E3E42; border-radius: 8px; margin-top: 10px; padding: 15px; color: white; }")
-        rule_layout = QHBoxLayout(rule_group)
-
-        rule_layout.addWidget(QLabel("IP:"))
-        self.rule_ip = QLineEdit()
-        self.rule_ip.setPlaceholderText("0.0.0.0")
-        self.rule_ip.setStyleSheet("QLineEdit { background: #3E3E42; color: white; border: 1px solid #555; border-radius: 5px; padding: 8px; }")
-        rule_layout.addWidget(self.rule_ip)
-
-        rule_layout.addWidget(QLabel("Порт:"))
-        self.rule_port = QLineEdit()
-        self.rule_port.setPlaceholderText("80")
-        self.rule_port.setStyleSheet("QLineEdit { background: #3E3E42; color: white; border: 1px solid #555; border-radius: 5px; padding: 8px; }")
-        rule_layout.addWidget(self.rule_port)
-
-        rule_layout.addWidget(QLabel("Направление:"))
-        self.rule_direction = QComboBox()
-        self.rule_direction.addItems(["Входящие", "Исходящие"])
-        self.rule_direction.setStyleSheet("QComboBox { background: #3E3E42; color: white; border: 1px solid #555; border-radius: 5px; padding: 8px; }")
-        rule_layout.addWidget(self.rule_direction)
-
-        rule_layout.addWidget(QLabel("Действие:"))
-        self.rule_action = QComboBox()
-        self.rule_action.addItems(["Блокировать", "Разрешить"])
-        self.rule_action.setStyleSheet("QComboBox { background: #3E3E42; color: white; border: 1px solid #555; border-radius: 5px; padding: 8px; }")
-        rule_layout.addWidget(self.rule_action)
-
-        btn_add_rule = ModernButton("Добавить")
-        btn_add_rule.clicked.connect(self.add_firewall_rule)
-        rule_layout.addWidget(btn_add_rule)
-
-        layout.addWidget(rule_group)
-
-        rules_table_group = QGroupBox("Активные правила")
-        rules_table_group.setStyleSheet("QGroupBox { border: 1px solid #3E3E42; border-radius: 8px; margin-top: 10px; padding: 15px; color: white; }")
-        rules_layout = QVBoxLayout(rules_table_group)
-
-        self.rules_table = QTableWidget()
-        self.rules_table.setStyleSheet("""
-            QTableWidget {
-                background: #1E1E1E;
-                color: white;
-                border: none;
-                gridline-color: #3E3E42;
-            }
-            QTableWidget::item { padding: 8px; }
-            QHeaderView::section { background: #2D2D30; color: white; padding: 8px; border: none; }
-        """)
-        self.rules_table.setColumnCount(5)
-        self.rules_table.setHorizontalHeaderLabels(["ID", "IP", "Порт", "Направление", "Действие"])
-        rules_layout.addWidget(self.rules_table)
-
-        btn_clear_rules = QPushButton("Очистить все правила")
-        btn_clear_rules.setStyleSheet("QPushButton { background: #C62828; color: white; border: none; border-radius: 5px; padding: 10px; } QPushButton:hover { background: #B71C1C; }")
-        btn_clear_rules.clicked.connect(self.clear_firewall_rules)
-        rules_layout.addWidget(btn_clear_rules)
-
-        layout.addWidget(rules_table_group)
-
-    def add_firewall_rule(self):
-        ip = self.rule_ip.text() or "0.0.0.0"
+    def _restore_quar(self, item):
         try:
-            port = int(self.rule_port.text() or "0")
-        except:
-            port = 0
-        direction = self.rule_direction.currentIndex()
-        action = self.rule_action.currentIndex()
+            if os.path.exists(item["original"]): QMessageBox.warning(self, t("warning"), "File exists!"); return
+            shutil.move(item["quarantine"], item["original"]); self.quarantine.remove(item)
+            self._save_quarantine(); self._refresh_quar(); self._log(f"Restored: {item['original']}")
+        except Exception as e: QMessageBox.critical(self, "Error", str(e))
 
-        if monitor_lib:
-            rule_id = monitor_lib.add_firewall_rule(ip.encode(), port, direction, action)
-            self.log_event(f"Добавлено правило файрвола: {ip}:{port}")
-        else:
-            rule_id = len(self.firewall_rules) + 1
-
-        self.firewall_rules.append({"id": rule_id, "ip": ip, "port": port, "direction": direction, "action": action})
-        self.update_rules_table()
-
-    def update_rules_table(self):
-        self.rules_table.setRowCount(0)
-        for rule in self.firewall_rules:
-            row = self.rules_table.rowCount()
-            self.rules_table.insertRow(row)
-            self.rules_table.setItem(row, 0, QTableWidgetItem(str(rule["id"])))
-            self.rules_table.setItem(row, 1, QTableWidgetItem(rule["ip"]))
-            self.rules_table.setItem(row, 2, QTableWidgetItem(str(rule["port"])))
-            self.rules_table.setItem(row, 3, QTableWidgetItem("Входящие" if rule["direction"] == 0 else "Исходящие"))
-            self.rules_table.setItem(row, 4, QTableWidgetItem("Блокировать" if rule["action"] == 0 else "Разрешить"))
-
-    def clear_firewall_rules(self):
-        if monitor_lib:
-            monitor_lib.clear_firewall_rules()
-        self.firewall_rules.clear()
-        self.update_rules_table()
-        self.log_event("Все правила файрвола очищены")
-
-    def create_quarantine_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(30, 30, 30, 30)
-
-        title = QLabel("📛 Карантин")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
-        layout.addWidget(title)
-
-        info = QLabel("Файлы, помещенные в карантин, не могут причинить вред системе.")
-        info.setStyleSheet("color: #AAAAAA;")
-        layout.addWidget(info)
-
-        self.quarantine_table = QTableWidget()
-        self.quarantine_table.setStyleSheet("""
-            QTableWidget {
-                background: #1E1E1E;
-                color: white;
-                border: none;
-                gridline-color: #3E3E42;
-            }
-            QTableWidget::item { padding: 8px; }
-            QHeaderView::section { background: #2D2D30; color: white; padding: 8px; border: none; }
-        """)
-        self.quarantine_table.setColumnCount(4)
-        self.quarantine_table.setHorizontalHeaderLabels(["Исходный путь", "Угроза", "Дата", "Действия"])
-        layout.addWidget(self.quarantine_table)
-
-        btns_layout = QHBoxLayout()
-        btn_refresh = ModernButton("🔄 Обновить")
-        btn_refresh.clicked.connect(self.load_quarantine)
-        btn_delete_all = ModernButton("🗑️ Удалить все")
-        btn_delete_all.setStyleSheet("QPushButton { background: #C62828; color: white; border: none; border-radius: 6px; padding: 10px 20px; font-weight: bold; } QPushButton:hover { background: #B71C1C; }")
-        btn_delete_all.clicked.connect(self.delete_all_quarantine)
-        btns_layout.addWidget(btn_refresh)
-        btns_layout.addWidget(btn_delete_all)
-        layout.addLayout(btns_layout)
-
-    def load_quarantine(self):
-        self.quarantine_table.setRowCount(0)
-        for item in self.quarantine_items:
-            row = self.quarantine_table.rowCount()
-            self.quarantine_table.insertRow(row)
-            self.quarantine_table.setItem(row, 0, QTableWidgetItem(item["original_path"]))
-            self.quarantine_table.setItem(row, 1, QTableWidgetItem(item["threat"]))
-            self.quarantine_table.setItem(row, 2, QTableWidgetItem(item["date"]))
-
-            btn_restore = QPushButton("Восстановить")
-            btn_restore.clicked.connect(lambda: self.restore_from_quarantine(item))
-            btn_delete = QPushButton("Удалить")
-            btn_delete.clicked.connect(lambda: self.delete_from_quarantine(item))
-            layout = QHBoxLayout()
-            layout.addWidget(btn_restore)
-            layout.addWidget(btn_delete)
-            self.quarantine_table.setCellWidget(row, 3, QWidget())
-
-    def save_quarantine(self):
-        with open(os.path.join(DATA_DIR, "quarantine.json"), "w") as f:
-            json.dump(self.quarantine_items, f)
-
-    def restore_from_quarantine(self, item):
+    def _delete_quar(self, item):
         try:
-            if os.path.exists(item["original_path"]):
-                QMessageBox.warning(self, "Внимание", "Файл уже существует на исходном месте!")
-                return
-            os.rename(item["quarantine_path"], item["original_path"])
-            self.quarantine_items.remove(item)
-            self.save_quarantine()
-            self.load_quarantine()
-            self.log_event(f"Восстановлен файл: {item['original_path']}")
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось восстановить: {e}")
+            if os.path.exists(item["quarantine"]): os.remove(item["quarantine"])
+            self.quarantine.remove(item); self._save_quarantine(); self._refresh_quar(); self._log(f"Deleted: {item['original']}")
+        except Exception as e: QMessageBox.critical(self, "Error", str(e))
 
-    def delete_from_quarantine(self, item):
-        try:
-            if os.path.exists(item["quarantine_path"]):
-                os.remove(item["quarantine_path"])
-            self.quarantine_items.remove(item)
-            self.save_quarantine()
-            self.load_quarantine()
-            self.log_event(f"Удален из карантина: {item['original_path']}")
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось удалить: {e}")
+    def _clear_quar(self):
+        if QMessageBox.question(self, t("warning"), t("confirm_clear")) == QMessageBox.StandardButton.Yes:
+            for item in self.quarantine:
+                try:
+                    if os.path.exists(item["quarantine"]): os.remove(item["quarantine"])
+                except: pass
+            self.quarantine.clear(); self._save_quarantine(); self._refresh_quar(); self._log("Quarantine cleared")
 
-    def delete_all_quarantine(self):
-        reply = QMessageBox.question(self, "Подтверждение", "Вы уверены, что хотите удалить все файлы из карантина?", QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            for item in self.quarantine_items:
-                if os.path.exists(item["quarantine_path"]):
-                    os.remove(item["quarantine_path"])
-            self.quarantine_items.clear()
-            self.save_quarantine()
-            self.load_quarantine()
-            self.log_event("Очищен карантин")
+    def _save_quarantine(self): QUAR_FILE.write_text(json.dumps(self.quarantine, ensure_ascii=False, indent=2))
+    def _load_quarantine(self):
+        if QUAR_FILE.exists():
+            try: self.quarantine = json.loads(QUAR_FILE.read_text())
+            except: self.quarantine = []
 
-    def create_log_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(30, 30, 30, 30)
+    # ─── Log Tab ───
+    def _tab_log(self):
+        w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
+        lay.addWidget(QLabel("📜 " + t("log").split()[1]))
+        self.log_table = QTableWidget(); self.log_table.setColumnCount(3)
+        self.log_table.setHorizontalHeaderLabels(["Время", "Тип", "Сообщение"]); self.log_table.horizontalHeader().setStretchLastSection(True)
+        lay.addWidget(self.log_table)
+        clr = QPushButton(t("clear")); clr.clicked.connect(self._clear_log); lay.addWidget(clr)
+        self._refresh_log(); return w
 
-        title = QLabel("📜 Журнал событий")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
-        layout.addWidget(title)
+    def _log(self, msg, etype="info"):
+        ts = datetime.datetime.now().strftime("%H:%M:%S")
+        self.log_events.append({"time": ts, "type": etype, "msg": msg})
+        try: (LOG_DIR / "shieldpro.log").open("a", encoding="utf-8").write(f"[{ts}] {msg}\n")
+        except: pass
 
-        self.log_filter = QComboBox()
-        self.log_filter.addItems(["Все события", "Угрозы", "Сканирование", "Файрвол", "Система"])
-        self.log_filter.setStyleSheet("QComboBox { background: #3E3E42; color: white; border: 1px solid #555; border-radius: 5px; padding: 8px; }")
-        layout.addWidget(self.log_filter)
-
-        self.log_table = QTableWidget()
-        self.log_table.setStyleSheet("""
-            QTableWidget {
-                background: #1E1E1E;
-                color: white;
-                border: none;
-                gridline-color: #3E3E42;
-            }
-            QTableWidget::item { padding: 8px; }
-            QHeaderView::section { background: #2D2D30; color: white; padding: 8px; border: none; }
-        """)
-        self.log_table.setColumnCount(3)
-        self.log_table.setHorizontalHeaderLabels(["Время", "Тип", "Сообщение"])
-        layout.addWidget(self.log_table)
-
-        btn_clear_log = ModernButton("Очистить журнал")
-        btn_clear_log.clicked.connect(self.clear_log)
-        layout.addWidget(btn_clear_log)
-
-    def log_event(self, message, event_type="info"):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.log_events.append({"time": timestamp, "type": event_type, "message": message})
-        self.update_log_display()
-        try:
-            with open(os.path.join(LOGS_DIR, "shieldpro.log"), "a", encoding="utf-8") as f:
-                f.write(f"[{timestamp}] [{event_type.upper()}] {message}\n")
-        except:
-            pass
-
-    def update_log_display(self):
+    def _refresh_log(self):
         self.log_table.setRowCount(0)
-        for event in self.log_events:
-            row = self.log_table.rowCount()
-            self.log_table.insertRow(row)
-            self.log_table.setItem(row, 0, QTableWidgetItem(event["time"]))
-            self.log_table.setItem(row, 1, QTableWidgetItem(event["type"]))
-            self.log_table.setItem(row, 2, QTableWidgetItem(event["message"]))
+        for e in self.log_events:
+            r = self.log_table.rowCount(); self.log_table.insertRow(r)
+            self.log_table.setItem(r, 0, QTableWidgetItem(e["time"]))
+            self.log_table.setItem(r, 1, QTableWidgetItem(e["type"]))
+            self.log_table.setItem(r, 2, QTableWidgetItem(e["msg"]))
 
-    def clear_log(self):
-        self.log_events.clear()
-        self.update_log_display()
-        self.log_event("Журнал очищен")
+    def _clear_log(self): self.log_events.clear(); self._refresh_log(); self._log("Log cleared")
+    def _load_log(self):
+        lf = LOG_DIR / "shieldpro.log"
+        if lf.exists():
+            for line in lf.read_text(encoding="utf-8").splitlines():
+                if line: self.log_events.append({"time": datetime.datetime.now().strftime("%H:%M:%S"), "type": "info", "msg": line})
+        if not self.log_events: self._log("ShieldPro started")
 
-    def load_log(self):
-        log_file = os.path.join(LOGS_DIR, "shieldpro.log")
-        if os.path.exists(log_file):
+    # ─── Settings Tab ───
+    def _tab_settings(self):
+        w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(QWidget())
+        inner = QWidget(); inner_lay = QVBoxLayout(inner); inner_lay.setSpacing(15)
+        s = cfg.scan
+
+        # General
+        g = QGroupBox(t("general")); gl = QFormLayout(g)
+        self.cb_autostart = QCheckBox(t("autostart")); self.cb_autostart.setChecked(cfg.autostart); gl.addRow(self.cb_autostart)
+        self.cb_realtime = QCheckBox(t("realtime")); self.cb_realtime.setChecked(cfg.realtime); gl.addRow(self.cb_realtime)
+        self.cb_auto_update = QCheckBox(t("auto_update")); self.cb_auto_update.setChecked(cfg.auto_update); gl.addRow(self.cb_auto_update)
+        self.cb_usb = QCheckBox(t("usb_protection")); self.cb_usb.setChecked(cfg.usb_protection); gl.addRow(self.cb_usb)
+        self.cb_firewall = QCheckBox(t("firewall")); self.cb_firewall.setChecked(cfg.firewall_enabled); gl.addRow(self.cb_firewall)
+        inner_lay.addWidget(g)
+
+        # Scan
+        g2 = QGroupBox(t("scan_cfg")); g2l = QFormLayout(g2)
+        self.sb_max_size = QSpinBox(); self.sb_max_size.setRange(1, 500); self.sb_max_size.setValue(s.max_file_size_mb); g2l.addRow(t("max_file_size"), self.sb_max_size)
+        self.sb_depth = QSpinBox(); self.sb_depth.setRange(1, 20); self.sb_depth.setValue(s.scan_depth); g2l.addRow(t("scan_depth"), self.sb_depth)
+        self.sb_threads = QSpinBox(); self.sb_threads.setRange(1, 16); self.sb_threads.setValue(s.threads); g2l.addRow(t("threads"), self.sb_threads)
+        self.cb_exe = QCheckBox(t("scan_exe")); self.cb_exe.setChecked(s.scan_exe); g2l.addRow(self.cb_exe)
+        self.cb_dll = QCheckBox(t("scan_dll")); self.cb_dll.setChecked(s.scan_dll); g2l.addRow(self.cb_dll)
+        self.cb_doc = QCheckBox(t("scan_doc")); self.cb_doc.setChecked(s.scan_doc); g2l.addRow(self.cb_doc)
+        self.cb_archives = QCheckBox(t("scan_archives")); self.cb_archives.setChecked(s.scan_archives); g2l.addRow(self.cb_archives)
+        self.cb_heuristic = QCheckBox(t("heuristic")); self.cb_heuristic.setChecked(s.heuristic); g2l.addRow(self.cb_heuristic)
+        self.cb_autoquar = QCheckBox(t("auto_quarantine")); self.cb_autoquar.setChecked(s.auto_quarantine); g2l.addRow(self.cb_autoquar)
+        self.le_exclude_paths = QLineEdit(s.exclude_paths); g2l.addRow(t("exclude_paths"), self.le_exclude_paths)
+        self.le_exclude_ext = QLineEdit(s.exclude_ext); g2l.addRow(t("exclude_ext"), self.le_exclude_ext)
+        self.cb_priority = QComboBox(); self.cb_priority.addItems([t("low"), t("normal"), t("high")])
+        self.cb_priority.setCurrentText({"low": t("low"), "normal": t("normal"), "high": t("high")}.get(s.priority, t("normal"))); g2l.addRow(t("priority"), self.cb_priority)
+        inner_lay.addWidget(g2)
+
+        # Appearance
+        g3 = QGroupBox(t("appearance")); g3l = QFormLayout(g3)
+        self.cb_theme = QComboBox(); self.cb_theme.addItems([t("dark"), t("light"), t("blue")])
+        self.cb_theme.setCurrentText({"dark": t("dark"), "light": t("light"), "blue": t("blue")}.get(cfg.theme, t("dark"))); g3l.addRow(t("theme"), self.cb_theme)
+        self.cb_lang = QComboBox(); self.cb_lang.addItems(["Русский", "English"]); self.cb_lang.setCurrentIndex(0 if cfg.language == "ru" else 1); g3l.addRow(t("language"), self.cb_lang)
+        self.sb_font = QSpinBox(); self.sb_font.setRange(8, 18); self.sb_font.setValue(cfg.font_size); g3l.addRow(t("font_size"), self.sb_font)
+        inner_lay.addWidget(g3)
+
+        # Notifications
+        g4 = QGroupBox(t("notifications")); g4l = QFormLayout(g4)
+        self.cb_sound = QCheckBox(t("sound")); self.cb_sound.setChecked(cfg.sound); g4l.addRow(self.cb_sound)
+        self.cb_popup = QCheckBox(t("popup")); self.cb_popup.setChecked(cfg.popup); g4l.addRow(self.cb_popup)
+        inner_lay.addWidget(g4)
+
+        # Import/Export
+        ie = QHBoxLayout()
+        exp_btn = QPushButton(t("export")); exp_btn.clicked.connect(self._export_settings); ie.addWidget(exp_btn)
+        imp_btn = QPushButton(t("import")); imp_btn.clicked.connect(self._import_settings); ie.addWidget(imp_btn)
+        inner_lay.addLayout(ie)
+
+        save_btn = QPushButton(t("save")); save_btn.setStyleSheet("QPushButton.success"); save_btn.clicked.connect(self._save_settings)
+        inner_lay.addWidget(save_btn); inner_lay.addStretch()
+        scroll.setWidget(inner); lay.addWidget(scroll)
+        return w
+
+    def _save_settings(self):
+        theme_map = {t("dark"): "dark", t("light"): "light", t("blue"): "blue"}
+        cfg.theme = theme_map.get(self.cb_theme.currentText(), "dark")
+        cfg.language = "ru" if self.cb_lang.currentIndex() == 0 else "en"
+        cfg.font_size = self.sb_font.value()
+        cfg.autostart = self.cb_autostart.isChecked()
+        cfg.realtime = self.cb_realtime.isChecked()
+        cfg.auto_update = self.cb_auto_update.isChecked()
+        cfg.sound = self.cb_sound.isChecked()
+        cfg.popup = self.cb_popup.isChecked()
+        cfg.usb_protection = self.cb_usb.isChecked()
+        cfg.firewall_enabled = self.cb_firewall.isChecked()
+        cfg.scan.max_file_size_mb = self.sb_max_size.value()
+        cfg.scan.scan_depth = self.sb_depth.value()
+        cfg.scan.threads = self.sb_threads.value()
+        cfg.scan.scan_exe = self.cb_exe.isChecked()
+        cfg.scan.scan_dll = self.cb_dll.isChecked()
+        cfg.scan.scan_doc = self.cb_doc.isChecked()
+        cfg.scan.scan_archives = self.cb_archives.isChecked()
+        cfg.scan.heuristic = self.cb_heuristic.isChecked()
+        cfg.scan.auto_quarantine = self.cb_autoquar.isChecked()
+        cfg.scan.exclude_paths = self.le_exclude_paths.text()
+        cfg.scan.exclude_ext = self.le_exclude_ext.text()
+        pri_map = {t("low"): "low", t("normal"): "normal", t("high"): "high"}
+        cfg.scan.priority = pri_map.get(self.cb_priority.currentText(), "normal")
+        cfg.save()
+        self.setStyleSheet(qss(THEMES[cfg.theme]))
+        self._log(t("settings_saved"))
+        QMessageBox.information(self, t("save"), t("settings_saved"))
+
+    def _export_settings(self):
+        fp, _ = QFileDialog.getSaveFileName(self, t("export"), str(DATA_DIR / "settings_backup.json"), "JSON (*.json)")
+        if fp: cfg.export_to(fp); self._log(t("export_success")); QMessageBox.information(self, t("export"), t("export_success"))
+
+    def _import_settings(self):
+        fp, _ = QFileDialog.getOpenFileName(self, t("import"), str(DATA_DIR), "JSON (*.json)")
+        if fp:
             try:
-                with open(log_file, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if "]" in line:
-                            parts = line.split("]", 2)
-                            if len(parts) >= 3:
-                                time_str = parts[0].strip("[")
-                                type_str = parts[1].strip("[ ").strip("]")
-                                msg = parts[2].strip()
-                                self.log_events.append({"time": time_str, "type": type_str, "message": msg})
-            except:
-                pass
-        if not self.log_events:
-            self.log_events = [
-                {"time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "info", "message": "ShieldPro запущен"},
-                {"time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "info", "message": "Загружен модуль сканирования"},
-            ]
-        self.update_log_display()
+                global cfg
+                cfg = AppConfig.import_from(fp)
+                cfg.save()
+                self._log(t("import_success"))
+                QMessageBox.information(self, t("import"), t("import_success"))
+                self._apply_settings()
+            except Exception as e: QMessageBox.critical(self, "Error", str(e))
 
-    def create_settings_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(30, 30, 30, 30)
+    def _apply_settings(self):
+        self.setStyleSheet(qss(THEMES[cfg.theme]))
 
-        title = QLabel("⚙️ Настройки")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
-        layout.addWidget(title)
+    # ─── Profile Tab ───
+    def _tab_profile(self):
+        w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        inner = QWidget(); inner_lay = QVBoxLayout(inner); inner_lay.setSpacing(15)
+        p = cfg.profile
 
-        general_group = QGroupBox("Общие")
-        general_group.setStyleSheet("QGroupBox { border: 1px solid #3E3E42; border-radius: 8px; margin-top: 10px; padding: 15px; color: white; }")
-        general_layout = QVBoxLayout(general_group)
+        # Profile info
+        g = QGroupBox("👤 " + t("profile").split()[1]); gl = QFormLayout(g)
+        self.le_username = QLineEdit(p.username); gl.addRow(t("username"), self.le_username)
+        self.le_email = QLineEdit(p.email); gl.addRow(t("email"), self.le_email)
+        self.cb_level = QComboBox(); self.cb_level.addItems([t("standard"), t("enhanced"), t("maximum")])
+        lvl_map = {"Стандартный": t("standard"), "Усиленный": t("enhanced"), "Максимальный": t("maximum"),
+                   "standard": t("standard"), "enhanced": t("enhanced"), "maximum": t("maximum")}
+        self.cb_level.setCurrentText(lvl_map.get(p.level, t("standard"))); gl.addRow(t("level"), self.cb_level)
+        save_prof = QPushButton("💾 " + t("save")); save_prof.clicked.connect(self._save_profile); gl.addRow(save_prof)
+        inner_lay.addWidget(g)
 
-        self.chk_autostart = QCheckBox("Запускать при старте системы")
-        self.chk_autostart.setStyleSheet("QCheckBox { color: white; }")
-        self.chk_autostart.stateChanged.connect(self.toggle_autostart)
-        general_layout.addWidget(self.chk_autostart)
+        # Statistics
+        g2 = QGroupBox("📊 " + t("stats")); g2l = QFormLayout(g2)
+        g2l.addRow(t("total_scans"), QLabel(str(scanner.stats["total_scans"])))
+        g2l.addRow(t("total_threats"), QLabel(str(scanner.stats["threats_detected"])))
+        g2l.addRow(t("quarantined"), QLabel(str(scanner.stats["files_quarantined"])))
+        g2l.addRow(t("last_scan"), QLabel(scanner.stats.get("last_scan", t("never"))))
+        avg_dur = 0
+        if scanner.stats["history"]:
+            durations = [h.get("duration", 0) for h in scanner.stats["history"] if h.get("duration")]
+            avg_dur = sum(durations) / len(durations) if durations else 0
+        g2l.addRow(t("avg_duration"), QLabel(f"{avg_dur:.1f} сек"))
+        inner_lay.addWidget(g2)
 
-        self.chk_realtime = QCheckBox("Защита в реальном времени")
-        self.chk_realtime.setStyleSheet("QCheckBox { color: white; }")
-        self.chk_realtime.setChecked(True)
-        general_layout.addWidget(self.chk_realtime)
+        # Scan History Table
+        g3 = QGroupBox("📜 " + t("scan_history")); g3lay = QVBoxLayout(g3)
+        self.history_table = QTableWidget(); self.history_table.setColumnCount(5)
+        self.history_table.setHorizontalHeaderLabels([t("date"), t("type"), t("files"), t("threats"), t("status")])
+        self.history_table.horizontalHeader().setStretchLastSection(True)
+        g3lay.addWidget(self.history_table)
+        inner_lay.addWidget(g3)
 
-        layout.addWidget(general_group)
+        # System Info
+        g4 = QGroupBox("💻 " + t("system_info")); g4l = QFormLayout(g4)
+        g4l.addRow(t("os"), QLabel(f"{platform.system()} {platform.release()}"))
+        g4l.addRow(t("python"), QLabel(platform.python_version()))
+        g4l.addRow(t("version"), QLabel("2.0.0"))
+        g4l.addRow("CPU", QLabel(f"{platform.processor()}"))
+        g4l.addRow("Arch", QLabel(platform.machine()))
+        g4l.addRow("Node", QLabel(platform.node()))
+        inner_lay.addWidget(g4)
 
-        update_group = QGroupBox("Обновление")
-        update_group.setStyleSheet("QGroupBox { border: 1px solid #3E3E42; border-radius: 8px; margin-top: 10px; padding: 15px; color: white; }")
-        update_layout = QVBoxLayout(update_group)
+        inner_lay.addStretch()
+        scroll.setWidget(inner); lay.addWidget(scroll)
+        self._refresh_history()
+        return w
 
-        update_layout.addWidget(QLabel("URL обновлений:"))
-        self.update_url = QLineEdit("http://localhost/update_signatures.txt")
-        self.update_url.setStyleSheet("QLineEdit { background: #3E3E42; color: white; border: 1px solid #555; border-radius: 5px; padding: 8px; }")
-        update_layout.addWidget(self.update_url)
+    def _save_profile(self):
+        level_map = {t("standard"): "standard", t("enhanced"): "enhanced", t("maximum"): "maximum",
+                     "Стандартный": "standard", "Усиленный": "enhanced", "Максимальный": "maximum"}
+        cfg.profile.username = self.le_username.text()
+        cfg.profile.email = self.le_email.text()
+        cfg.profile.level = level_map.get(self.cb_level.currentText(), "standard")
+        cfg.save(); self._log(t("profile_saved"))
+        QMessageBox.information(self, t("save"), t("profile_saved"))
 
-        self.chk_auto_update = QCheckBox("Автоматически проверять обновления")
-        self.chk_auto_update.setStyleSheet("QCheckBox { color: white; }")
-        self.chk_auto_update.setChecked(True)
-        update_layout.addWidget(self.chk_auto_update)
+    def _add_history(self, scan_type, status="running"):
+        entry = {"date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), "type": scan_type,
+                 "files": 0, "threats": 0, "status": status, "duration": 0}
+        scanner.stats["history"].append(entry)
+        scanner.save_stats()
+        self._refresh_history()
 
-        layout.addWidget(update_group)
+    def _update_history(self, status, files_scanned=0, threats_found=0):
+        if scanner.stats["history"]:
+            h = scanner.stats["history"][-1]
+            h["status"] = status; h["files"] = files_scanned; h["threats"] = threats_found
+            h["duration"] = time.time() - h.get("_start", time.time())
+            scanner.save_stats()
+            self._refresh_history()
 
-        scan_group = QGroupBox("Сканирование")
-        scan_group.setStyleSheet("QGroupBox { border: 1px solid #3E3E42; border-radius: 8px; margin-top: 10px; padding: 15px; color: white; }")
-        scan_layout = QVBoxLayout(scan_group)
+    def _refresh_history(self):
+        if not hasattr(self, 'history_table'): return
+        self.history_table.setRowCount(0)
+        for h in reversed(scanner.stats.get("history", [])):
+            r = self.history_table.rowCount(); self.history_table.insertRow(r)
+            self.history_table.setItem(r, 0, QTableWidgetItem(h.get("date", "")))
+            self.history_table.setItem(r, 1, QTableWidgetItem(h.get("type", "")))
+            self.history_table.setItem(r, 2, QTableWidgetItem(str(h.get("files", 0))))
+            self.history_table.setItem(r, 3, QTableWidgetItem(str(h.get("threats", 0))))
+            self.history_table.setItem(r, 4, QTableWidgetItem(h.get("status", "")))
 
-        scan_layout.addWidget(QLabel("Папки для быстрого сканирования:"))
-        self.scan_folders = QLineEdit(os.path.expanduser("~/Downloads"), os.path.expanduser("~/Documents"))
-        self.scan_folders.setStyleSheet("QLineEdit { background: #3E3E42; color: white; border: 1px solid #555; border-radius: 5px; padding: 8px; }")
-        scan_layout.addWidget(self.scan_folders)
+    def _load_history(self):
+        if not scanner.stats.get("history"): scanner.stats["history"] = []
 
-        layout.addWidget(scan_group)
+    # ─── Native Modules ───
+    def _load_native(self):
+        for name, lib_name in [("engine", "engine.dll"), ("heuristic", "heuristic.dll"), ("monitor", "monitor.dll"), ("updater", "updater.dll")]:
+            p = MODULES_DIR / lib_name
+            if p.exists():
+                try: ctypes.CDLL(str(p)); self._log(f"Loaded: {name}")
+                except: pass
 
-        layout.addStretch()
+    # ─── Tray ───
+    def _tray(self):
+        self.tray = QSystemTrayIcon(self); self.tray.setToolTip("ShieldPro")
+        menu = QMenu()
+        menu.addAction("Open", self.show)
+        menu.addAction("Exit", self.close)
+        self.tray.setContextMenu(menu); self.tray.show()
 
-    def toggle_autostart(self, state):
-        app_path = sys.executable
-        if state == Qt.Checked:
-            if monitor_lib:
-                monitor_lib.register_autostart(app_path.encode(), "ShieldPro".encode())
-            self.log_event("Автозапуск включен")
-        else:
-            if monitor_lib:
-                monitor_lib.unregister_autostart("ShieldPro".encode())
-            self.log_event("Автозапуск отключен")
-
-    def start_realtime_protection(self):
-        if monitor_lib:
-            try:
-                dirs = [b"C:\\Windows\\System32", os.path.expanduser("~/Downloads").encode()]
-                dirs_arr = (ctypes.c_char_p * len(dirs))(*dirs)
-                monitor_lib.init_monitor(dirs_arr, len(dirs))
-                self.log_event("Защита в реальном времени активирована (native)")
-            except Exception as e:
-                self.log_event(f"Real-time protection: using simulation mode")
-        else:
-            self.log_event("Защита в реальном времени (симуляция)")
-
-    def create_status_bar(self, layout):
-        self.status_bar = QStatusBar()
-        self.status_bar.setStyleSheet("background: #252526; color: #AAAAAA; border-top: 1px solid #3E3E42; padding: 5px;")
-        self.status_bar.showMessage("ShieldPro готов к работе")
-        layout.addWidget(self.status_bar)
-
-    def create_tray_icon(self):
-        self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setToolTip("ShieldPro - Антивирусная защита")
-
-        tray_menu = QMenu()
-        open_action = QAction("Открыть", self)
-        open_action.triggered.connect(self.show)
-        tray_menu.addAction(open_action)
-
-        protect_action = QAction("Приостановить защиту", self)
-        protect_action.triggered.connect(self.toggle_protection)
-        protect_action.setObjectName("tray_protect")
-        tray_menu.addAction(protect_action)
-
-        tray_menu.addSeparator()
-
-        exit_action = QAction("Выход", self)
-        exit_action.triggered.connect(self.close)
-        tray_menu.addAction(exit_action)
-
-        self.tray_icon.setContextMenu(tray_menu)
-        self.tray_icon.activated.connect(self.tray_activated)
-
-    def tray_activated(self, reason):
-        if reason == QSystemTrayIcon.DoubleClick:
-            self.show()
-
-    def toggle_protection(self):
-        self.is_protected = not self.is_protected
-        if self.is_protected:
-            self.status_indicator.set_status("protected")
-            self.status_bar.showMessage("ShieldPro готов к работе")
-            self.log_event("Защита возобновлена")
-        else:
-            self.status_indicator.set_status("disabled")
-            self.status_bar.showMessage("Защита приостановлена")
-            self.log_event("Защита приостановлена")
-
-    def closeEvent(self, event):
-        if self.is_scanning:
-            reply = QMessageBox.question(self, "Сканирование", "Сканирование активно. Остановить и выйти?", QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.No:
-                event.ignore()
-                return
-            self.stop_scan()
-
-        if monitor_lib:
-            monitor_lib.stop_monitor()
-
-        event.accept()
+    def closeEvent(self, e):
+        if self.scan_worker and self.scan_worker.isRunning():
+            if QMessageBox.question(self, t("warning"), "Stop scan and exit?") == QMessageBox.StandardButton.Yes:
+                self.scan_worker.stop(); self.scan_worker.wait()
+            else: e.ignore(); return
+        e.accept()
 
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-
-    palette = QPalette()
-    palette.setColor(QPalette.Window, QColor("#1E1E1E"))
-    palette.setColor(QPalette.WindowText, Qt.white)
-    app.setPalette(palette)
-
-    window = ShieldProGUI()
-    window.show()
-
-    sys.exit(app.exec_())
+    w = ShieldProGUI(); w.show()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
     main()

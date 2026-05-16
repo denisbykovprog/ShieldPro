@@ -1,795 +1,488 @@
-import sys
-import os
-import threading
-import time
-import datetime
-import json
-import shutil
-import hashlib
-import platform
+"""ShieldPro AntiVirus v2.0 - Tkinter Fallback Edition (Optimized)"""
+import sys, os, threading, time, json, shutil, datetime, hashlib, platform
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODULES_DIR = os.path.join(BASE_DIR, "modules")
 DATA_DIR = os.path.join(BASE_DIR, "data")
-SIGNATURES_DIR = os.path.join(DATA_DIR, "signatures")
-QUARANTINE_DIR = os.path.join(DATA_DIR, "quarantine")
-LOGS_DIR = os.path.join(DATA_DIR, "logs")
+SIG_DIR, QUAR_DIR, LOG_DIR = (os.path.join(DATA_DIR, d) for d in ("signatures", "quarantine", "logs"))
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+QUAR_FILE = os.path.join(DATA_DIR, "quarantine.json")
+SIG_FILE = os.path.join(SIG_DIR, "signatures.txt")
 
-for d in [SIGNATURES_DIR, QUARANTINE_DIR, LOGS_DIR]:
-    os.makedirs(d, exist_ok=True)
-
-SIGNATURES_FILE = os.path.join(SIGNATURES_DIR, "signatures.txt")
-if not os.path.exists(SIGNATURES_FILE):
-    with open(SIGNATURES_FILE, "w") as f:
-        f.write("EICAR:58354f2150254041505b345c505a58353428505e\n")
-        f.write("TestVirus:48656c6c6f576f726c64\n")
-
-DEFAULT_SETTINGS = {
-    "theme": "dark",
-    "language": "ru",
-    "scan_settings": {
-        "max_file_size_mb": 50,
-        "scan_depth": 3,
-        "scan_exe": True,
-        "scan_dll": True,
-        "scan_doc": True,
-        "scan_archives": True,
-        "heuristic_analysis": True,
-        "quarantine_threats": True
-    },
-    "profile": {
-        "username": "Пользователь",
-        "email": "user@shieldpro.local",
-        "protection_level": "Стандартный"
-    }
-}
-
-def load_settings():
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            pass
-    return DEFAULT_SETTINGS.copy()
-
-def save_settings(settings):
-    try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, ensure_ascii=False, indent=4)
-    except:
-        pass
-
-settings = load_settings()
-
-TRANSLATIONS = {
-    "ru": {
-        "title": "ShieldPro - Антивирусная защита",
-        "dashboard": "📊 Панель",
-        "scan": "🔍 Сканирование",
-        "quarantine": "📛 Карантин",
-        "log": "📜 Журнал",
-        "settings": "⚙️ Настройки",
-        "profile": "👤 Профиль",
-        "protection_active": "✓ Защита активна",
-        "protection_inactive": "✗ Защита отключена",
-        "quick_scan": "🚀 Быстрое сканирование",
-        "full_scan": "🔍 Полное сканирование",
-        "custom_scan": "📁 Выборочное сканирование",
-        "update_db": "📥 Обновить базу",
-        "signatures": "База сигнатур",
-        "entries": "записей",
-        "start_scan": "▶ Начать сканирование",
-        "stop_scan": "⏹ Стоп",
-        "ready": "Готов к сканированию",
-        "scanning": "Сканирование...",
-        "threats_found": "Найденные угрозы",
-        "no_threats": "Угроз не обнаружено",
-        "select_folder": "📁 Выбрать папку",
-        "folder_not_selected": "Папка не выбрана",
-        "quick": "Быстрое",
-        "full": "Полное",
-        "custom": "Выборочное",
-        "quarantine_title": "📛 Карантин",
-        "quarantine_empty": "Карантин пуст",
-        "refresh": "🔄 Обновить",
-        "delete_all": "🗑️ Удалить все",
-        "clear_all": "🗑️ Очистить все",
-        "log_title": "📜 Журнал событий",
-        "clear_log": "Очистить",
-        "settings_title": "⚙️ Настройки",
-        "scan_settings": "Настройки сканирования",
-        "max_file_size": "Макс. размер файла (МБ)",
-        "scan_depth": "Глубина сканирования",
-        "scan_exe": "Сканировать .exe файлы",
-        "scan_dll": "Сканировать .dll файлы",
-        "scan_doc": "Сканировать документы",
-        "scan_archives": "Сканировать архивы",
-        "heuristic": "Эвристический анализ",
-        "quarantine_auto": "Авто-карантин",
-        "appearance": "Внешний вид",
-        "theme": "Тема",
-        "dark": "Тёмная",
-        "light": "Светлая",
-        "language": "Язык",
-        "save_settings": "💾 Сохранить настройки",
-        "profile_title": "👤 Профиль пользователя",
-        "username": "Имя пользователя",
-        "email": "Email",
-        "protection_level": "Уровень защиты",
-        "standard": "Стандартный",
-        "enhanced": "Усиленный",
-        "maximum": "Максимальный",
-        "statistics": "Статистика",
-        "total_scans": "Всего сканирований",
-        "threats_detected": "Обнаружено угроз",
-        "files_quarantined": "Файлов в карантине",
-        "last_scan": "Последнее сканирование",
-        "scan_complete": "Сканирование завершено",
-        "threats_count": "Найдено угроз",
-        "never": "Никогда",
-        "edit_profile": "✏️ Изменить профиль",
-        "profile_saved": "Профиль сохранён",
-        "settings_saved": "Настройки сохранены",
-        "warning": "Внимание",
-        "select_folder_warning": "Выберите папку для сканирования!"
-    },
-    "en": {
-        "title": "ShieldPro - Antivirus Protection",
-        "dashboard": "📊 Dashboard",
-        "scan": "🔍 Scanning",
-        "quarantine": "📛 Quarantine",
-        "log": "📜 Log",
-        "settings": "⚙️ Settings",
-        "profile": "👤 Profile",
-        "protection_active": "✓ Protection Active",
-        "protection_inactive": "✗ Protection Disabled",
-        "quick_scan": "🚀 Quick Scan",
-        "full_scan": "🔍 Full Scan",
-        "custom_scan": "📁 Custom Scan",
-        "update_db": "📥 Update Database",
-        "signatures": "Signature database",
-        "entries": "entries",
-        "start_scan": "▶ Start Scan",
-        "stop_scan": "⏹ Stop",
-        "ready": "Ready to scan",
-        "scanning": "Scanning...",
-        "threats_found": "Threats found",
-        "no_threats": "No threats detected",
-        "select_folder": "📁 Select folder",
-        "folder_not_selected": "Folder not selected",
-        "quick": "Quick",
-        "full": "Full",
-        "custom": "Custom",
-        "quarantine_title": "📛 Quarantine",
-        "quarantine_empty": "Quarantine is empty",
-        "refresh": "🔄 Refresh",
-        "delete_all": "🗑️ Delete All",
-        "clear_all": "🗑️ Clear All",
-        "log_title": "📜 Event Log",
-        "clear_log": "Clear",
-        "settings_title": "⚙️ Settings",
-        "scan_settings": "Scan Settings",
-        "max_file_size": "Max file size (MB)",
-        "scan_depth": "Scan depth",
-        "scan_exe": "Scan .exe files",
-        "scan_dll": "Scan .dll files",
-        "scan_doc": "Scan documents",
-        "scan_archives": "Scan archives",
-        "heuristic": "Heuristic analysis",
-        "quarantine_auto": "Auto-quarantine",
-        "appearance": "Appearance",
-        "theme": "Theme",
-        "dark": "Dark",
-        "light": "Light",
-        "language": "Language",
-        "save_settings": "💾 Save Settings",
-        "profile_title": "👤 User Profile",
-        "username": "Username",
-        "email": "Email",
-        "protection_level": "Protection Level",
-        "standard": "Standard",
-        "enhanced": "Enhanced",
-        "maximum": "Maximum",
-        "statistics": "Statistics",
-        "total_scans": "Total scans",
-        "threats_detected": "Threats detected",
-        "files_quarantined": "Files in quarantine",
-        "last_scan": "Last scan",
-        "scan_complete": "Scan complete",
-        "threats_count": "Threats found",
-        "never": "Never",
-        "edit_profile": "✏️ Edit Profile",
-        "profile_saved": "Profile saved",
-        "settings_saved": "Settings saved",
-        "warning": "Warning",
-        "select_folder_warning": "Select a folder to scan!"
-    }
-}
-
-def t(key):
-    return TRANSLATIONS.get(settings.get("language", "ru"), TRANSLATIONS["ru"]).get(key, key)
+for d in (SIG_DIR, QUAR_DIR, LOG_DIR): os.makedirs(d, exist_ok=True)
+if not os.path.exists(SIG_FILE):
+    open(SIG_FILE, "w").write("EICAR:58354f2150254041505b345c505a58353428505e\nTestVirus:48656c6c6f576f726c64\n")
 
 THEMES = {
-    "dark": {
-        "bg": "#1E1E1E",
-        "fg": "white",
-        "frame_bg": "#252526",
-        "button_bg": "#0078D7",
-        "button_fg": "white",
-        "danger": "#C62828",
-        "success": "#4CAF50",
-        "warning": "#FF9800",
-        "secondary": "#3E3E42",
-        "text_secondary": "#AAAAAA"
-    },
-    "light": {
-        "bg": "#F5F5F5",
-        "fg": "#333333",
-        "frame_bg": "#FFFFFF",
-        "button_bg": "#2196F3",
-        "button_fg": "white",
-        "danger": "#F44336",
-        "success": "#4CAF50",
-        "warning": "#FF9800",
-        "secondary": "#E0E0E0",
-        "text_secondary": "#757575"
-    }
+    "dark": {"bg": "#1E1E1E", "fg": "white", "frame_bg": "#252526", "button_bg": "#0078D7",
+             "danger": "#C62828", "success": "#4CAF50", "warning": "#FF9800", "secondary": "#3E3E42", "text2": "#AAAAAA"},
+    "light": {"bg": "#F5F5F5", "fg": "#333333", "frame_bg": "#FFFFFF", "button_bg": "#2196F3",
+              "danger": "#F44336", "success": "#4CAF50", "warning": "#FF9800", "secondary": "#E0E0E0", "text2": "#757575"},
+    "blue": {"bg": "#0D1B2A", "fg": "white", "frame_bg": "#1B2838", "button_bg": "#00B4D8",
+             "danger": "#EF476F", "success": "#2DC653", "warning": "#FFD166", "secondary": "#37475A", "text2": "#8D99AE"}
 }
 
-def get_theme():
-    return THEMES.get(settings.get("theme", "dark"), THEMES["dark"])
+LANG = {
+    "ru": {"title": "ShieldPro - Антивирус", "dashboard": "📊 Панель", "scan": "🔍 Сканирование",
+           "quarantine": "📛 Карантин", "log": "📜 Журнал", "settings": "⚙️ Настройки", "profile": "👤 Профиль",
+           "protection": "✓ Защита активна", "quick_scan": "🚀 Быстрое", "full_scan": "🔍 Полное",
+           "custom_scan": "📁 Выборочное", "update_db": "📥 Обновить базу", "start": "▶ Старт",
+           "stop": "⏹ Стоп", "refresh": "🔄 Обновить", "delete_all": "🗑️ Удалить всё",
+           "save": "💾 Сохранить", "export": "📤 Экспорт", "import": "📥 Импорт",
+           "no_threats": "Угроз не найдено", "scan_done": "Сканирование завершено",
+           "threats_count": "Найдено угроз", "quarantine_empty": "Карантин пуст",
+           "stats": "Статистика", "total_scans": "Всего сканирований", "total_threats": "Обнаружено угроз",
+           "quarantined": "В карантине", "last_scan": "Последнее сканирование", "never": "Никогда",
+           "scan_history": "История сканирований", "date": "Дата", "type": "Тип", "files": "Файлов",
+           "threats": "Угрозы", "status": "Статус", "completed": "Завершено",
+           "general": "Общие", "scan_cfg": "Сканирование", "appearance": "Внешний вид",
+           "security": "Безопасность", "performance": "Производительность", "notifications": "Уведомления",
+           "autostart": "Автозапуск", "realtime": "Защита в реальном времени", "auto_update": "Автообновление",
+           "max_file_size": "Макс. размер (МБ)", "scan_depth": "Глубина", "scan_exe": "Сканировать .exe",
+           "scan_dll": "Сканировать .dll", "scan_doc": "Сканировать документы", "scan_archives": "Сканировать архивы",
+           "heuristic": "Эвристика", "auto_quarantine": "Авто-карантин", "theme": "Тема", "language": "Язык",
+           "font_size": "Размер шрифта", "dark": "Тёмная", "light": "Светлая", "blue": "Синяя",
+           "sound": "Звуковые уведомления", "popup": "Всплывающие уведомления", "threads": "Потоки",
+           "priority": "Приоритет", "low": "Низкий", "normal": "Нормальный", "high": "Высокий",
+           "exclude_paths": "Исключения (пути)", "exclude_ext": "Исключения (расширения)",
+           "settings_saved": "Настройки сохранены", "profile_saved": "Профиль сохранён",
+           "export_success": "Настройки экспортированы", "import_success": "Настройки импортированы",
+           "warning": "Внимание", "select_folder": "Выберите папку!", "confirm_clear": "Очистить всё?",
+           "username": "Имя", "email": "Email", "level": "Уровень защиты",
+           "standard": "Стандартный", "enhanced": "Усиленный", "maximum": "Максимальный",
+           "system_info": "Системная информация", "os": "ОС", "python": "Python", "version": "Версия"},
+    "en": {"title": "ShieldPro - Antivirus", "dashboard": "📊 Dashboard", "scan": "🔍 Scanning",
+           "quarantine": "📛 Quarantine", "log": "📜 Log", "settings": "⚙️ Settings", "profile": "👤 Profile",
+           "protection": "✓ Protection Active", "quick_scan": "🚀 Quick", "full_scan": "🔍 Full",
+           "custom_scan": "📁 Custom", "update_db": "📥 Update DB", "start": "▶ Start",
+           "stop": "⏹ Stop", "refresh": "🔄 Refresh", "delete_all": "🗑️ Delete All",
+           "save": "💾 Save", "export": "📤 Export", "import": "📥 Import",
+           "no_threats": "No threats found", "scan_done": "Scan complete",
+           "threats_count": "Threats found", "quarantine_empty": "Quarantine empty",
+           "stats": "Statistics", "total_scans": "Total scans", "total_threats": "Threats detected",
+           "quarantined": "In quarantine", "last_scan": "Last scan", "never": "Never",
+           "scan_history": "Scan History", "date": "Date", "type": "Type", "files": "Files",
+           "threats": "Threats", "status": "Status", "completed": "Completed",
+           "general": "General", "scan_cfg": "Scanning", "appearance": "Appearance",
+           "security": "Security", "performance": "Performance", "notifications": "Notifications",
+           "autostart": "Autostart", "realtime": "Real-time protection", "auto_update": "Auto-update",
+           "max_file_size": "Max file size (MB)", "scan_depth": "Depth", "scan_exe": "Scan .exe",
+           "scan_dll": "Scan .dll", "scan_doc": "Scan documents", "scan_archives": "Scan archives",
+           "heuristic": "Heuristic", "auto_quarantine": "Auto-quarantine", "theme": "Theme", "language": "Language",
+           "font_size": "Font size", "dark": "Dark", "light": "Light", "blue": "Blue",
+           "sound": "Sound notifications", "popup": "Popup notifications", "threads": "Threads",
+           "priority": "Priority", "low": "Low", "normal": "Normal", "high": "High",
+           "exclude_paths": "Excluded paths", "exclude_ext": "Excluded extensions",
+           "settings_saved": "Settings saved", "profile_saved": "Profile saved",
+           "export_success": "Settings exported", "import_success": "Settings imported",
+           "warning": "Warning", "select_folder": "Select a folder!", "confirm_clear": "Clear all?",
+           "username": "Name", "email": "Email", "level": "Protection level",
+           "standard": "Standard", "enhanced": "Enhanced", "maximum": "Maximum",
+           "system_info": "System Info", "os": "OS", "python": "Python", "version": "Version"}
+}
 
-class PythonScanner:
+def t(k): return LANG.get(cfg.language, LANG["ru"]).get(k, k)
+
+class ScanSettings:
+    def __init__(self, d=None):
+        d = d or {}
+        self.max_file_size_mb = d.get("max_file_size_mb", 50)
+        self.scan_depth = d.get("scan_depth", 5)
+        self.scan_exe = d.get("scan_exe", True); self.scan_dll = d.get("scan_dll", True)
+        self.scan_doc = d.get("scan_doc", True); self.scan_archives = d.get("scan_archives", True)
+        self.heuristic = d.get("heuristic", True); self.auto_quarantine = d.get("auto_quarantine", True)
+        self.threads = d.get("threads", 4); self.priority = d.get("priority", "normal")
+        self.exclude_paths = d.get("exclude_paths", ""); self.exclude_ext = d.get("exclude_ext", "tmp,log,bak")
+    def dict(self): return {k: getattr(self, k) for k in self.__dict__}
+
+class ProfileSettings:
+    def __init__(self, d=None):
+        d = d or {}
+        self.username = d.get("username", "User"); self.email = d.get("email", "user@shieldpro.local")
+        self.level = d.get("level", "standard")
+    def dict(self): return {k: getattr(self, k) for k in self.__dict__}
+
+class AppConfig:
     def __init__(self):
-        self.signatures = {}
-        self.load_signatures()
-        self.stats = {
-            "total_scans": 0,
-            "threats_detected": 0,
-            "files_quarantined": 0,
-            "last_scan": None
-        }
-        self.load_stats()
-
-    def load_signatures(self):
-        if os.path.exists(SIGNATURES_FILE):
-            with open(SIGNATURES_FILE, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and ':' in line and not line.startswith('#'):
-                        parts = line.split(':', 1)
-                        if len(parts) == 2:
-                            name, hex_sig = parts
-                            try:
-                                self.signatures[name] = bytes.fromhex(hex_sig)
-                            except:
-                                pass
-        print(f"[ShieldPro] Loaded {len(self.signatures)} signatures")
-
-    def scan_file(self, filepath):
-        if not os.path.exists(filepath):
-            return None
-        try:
-            with open(filepath, 'rb') as f:
-                data = f.read(65536)
-            for name, sig in self.signatures.items():
-                if len(sig) <= len(data) and sig in data:
-                    return name
-            return None
-        except:
-            return None
-
-    def load_stats(self):
-        stats_file = os.path.join(DATA_DIR, "stats.json")
-        if os.path.exists(stats_file):
+        self.theme = "dark"; self.language = "ru"; self.font_size = 10
+        self.scan = ScanSettings(); self.profile = ProfileSettings()
+        self.autostart = False; self.realtime = True; self.auto_update = True
+        self.sound = True; self.popup = True; self.usb_protection = False; self.firewall_enabled = False
+    @classmethod
+    def load(cls):
+        c = cls()
+        if os.path.exists(SETTINGS_FILE):
             try:
-                with open(stats_file, 'r') as f:
-                    self.stats = json.load(f)
-            except:
-                pass
+                d = json.load(open(SETTINGS_FILE, encoding="utf-8"))
+                c.theme = d.get("theme", "dark"); c.language = d.get("language", "ru")
+                c.font_size = d.get("font_size", 10); c.scan = ScanSettings(d.get("scan", {}))
+                c.profile = ProfileSettings(d.get("profile", {}))
+                c.autostart = d.get("autostart", False); c.realtime = d.get("realtime", True)
+                c.auto_update = d.get("auto_update", True); c.sound = d.get("sound", True)
+                c.popup = d.get("popup", True); c.usb_protection = d.get("usb_protection", False)
+                c.firewall_enabled = d.get("firewall_enabled", False)
+            except: pass
+        return c
+    def save(self):
+        json.dump({"theme": self.theme, "language": self.language, "font_size": self.font_size,
+                   "scan": self.scan.dict(), "profile": self.profile.dict(),
+                   "autostart": self.autostart, "realtime": self.realtime, "auto_update": self.auto_update,
+                   "sound": self.sound, "popup": self.popup, "usb_protection": self.usb_protection,
+                   "firewall_enabled": self.firewall_enabled},
+                  open(SETTINGS_FILE, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 
-    def save_stats(self):
-        stats_file = os.path.join(DATA_DIR, "stats.json")
+cfg = AppConfig.load()
+
+class Scanner:
+    __slots__ = ("signatures", "stats")
+    def __init__(self):
+        self.signatures = {}; self.stats = {"total_scans": 0, "threats_detected": 0, "files_quarantined": 0, "last_scan": None, "history": []}
+        self._load_sigs(); self._load_stats()
+    def _load_sigs(self):
+        if os.path.exists(SIG_FILE):
+            for line in open(SIG_FILE).read().splitlines():
+                line = line.strip()
+                if line and ':' in line and not line.startswith('#'):
+                    try:
+                        n, h = line.split(':', 1); self.signatures[n] = bytes.fromhex(h)
+                    except: pass
+    def scan_file(self, fp):
         try:
-            with open(stats_file, 'w') as f:
-                json.dump(self.stats, f)
-        except:
-            pass
+            with open(fp, 'rb') as f: data = f.read(65536)
+            for n, s in self.signatures.items():
+                if s in data: return n
+        except: pass
+        return None
+    def _load_stats(self):
+        sf = os.path.join(DATA_DIR, "stats.json")
+        if os.path.exists(sf):
+            try: self.stats.update(json.load(open(sf)))
+            except: pass
+    def save_stats(self):
+        json.dump(self.stats, open(os.path.join(DATA_DIR, "stats.json"), "w"))
 
-scanner = PythonScanner()
+scanner = Scanner()
 
 class ShieldProGUI:
     def __init__(self, root):
-        self.root = root
-        self.root.title(t("title"))
-        self.root.geometry("1000x700")
-        self.theme = get_theme()
-        self.root.configure(bg=self.theme["bg"])
-        self.is_scanning = False
-        self.threats = []
-        self.quarantine_items = []
-        self.log_events = []
-        self.init_ui()
-        self.load_quarantine()
-        self.log("ShieldPro started")
+        self.root = root; self.root.title(t("title")); self.root.geometry("1050x720")
+        self.theme = THEMES[cfg.theme]; self.is_scanning = False; self.threats = []
+        self.quarantine = []; self.log_events = []
+        self._load_quar(); self._load_log()
+        self._init_ui()
 
-    def get_colors(self):
-        return self.theme
+    def _init_ui(self):
+        c = self.theme
+        self.root.configure(bg=c["bg"])
+        style = ttk.Style(); style.theme_use('clam')
+        style.configure("TNotebook", background=c["bg"])
+        style.configure("TNotebook.Tab", background=c["secondary"], foreground=c["fg"], padding=[12, 6])
+        style.map("TNotebook.Tab", background=[("selected", c["button_bg"])], foreground=[("selected", "white")])
+        nb = ttk.Notebook(self.root); nb.pack(fill="both", expand=True, padx=8, pady=8)
+        for frame, label in [(self._dashboard(), t("dashboard")), (self._scan_tab(), t("scan")),
+                             (self._quar_tab(), t("quarantine")), (self._log_tab(), t("log")),
+                             (self._settings_tab(), t("settings")), (self._profile_tab(), t("profile"))]:
+            nb.add(frame, text=label)
 
-    def init_ui(self):
-        colors = self.get_colors()
-        style = {
-            "bg": colors["bg"],
-            "fg": colors["fg"],
-            "selectbackground": colors["button_bg"],
-            "font": ("Segoe UI", 10)
-        }
+    def _btn(self, parent, text, cmd, bg=None, fg="white", **kw):
+        return tk.Button(parent, text=text, bg=bg or self.theme["button_bg"], fg=fg, font=("Segoe UI", 10, "bold"), command=cmd, **kw)
 
-        self.notebook = None
-        try:
-            import tkinter.ttk as ttk
-            style = ttk.Style()
-            style.theme_use('clam')
-            style.configure("TNotebook", background=colors["bg"])
-            style.configure("TNotebook.Tab", background=colors["secondary"], foreground=colors["fg"], padding=[10, 5])
-            style.map("TNotebook.Tab", background=[("selected", colors["button_bg"])], foreground=[("selected", "white")])
+    def _dashboard(self):
+        c = self.theme; f = tk.Frame(self.root, bg=c["bg"])
+        tk.Label(f, text="🛡️ ShieldPro", bg=c["bg"], fg=c["fg"], font=("Segoe UI", 22, "bold")).pack(pady=20)
+        info = tk.Frame(f, bg=c["frame_bg"], padx=20, pady=15); info.pack(fill="x", padx=20)
+        tk.Label(info, text=t("protection"), bg=c["frame_bg"], fg=c["success"], font=("Segoe UI", 14, "bold")).pack()
+        bf = tk.Frame(info, bg=c["frame_bg"]); bf.pack(pady=10)
+        self._btn(bf, t("quick_scan"), self._quick_scan).pack(side="left", padx=5)
+        self._btn(bf, t("full_scan"), self._full_scan).pack(side="left", padx=5)
+        self._btn(bf, t("update_db"), self._update_db, bg=c["success"]).pack(side="left", padx=5)
+        tk.Label(f, text=f"{t('total_threats')}: {scanner.stats['threats_detected']}", bg=c["bg"], fg=c["text2"]).pack(pady=5)
+        return f
 
-            self.notebook = ttk.Notebook(self.root)
-            self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
-            self.create_tabs_ttk()
-        except Exception as e:
-            print(f"TTK error: {e}")
-            frame = tk.Frame(self.root, bg=colors["bg"])
-            frame.pack(fill="both", expand=True, padx=10, pady=10)
-            self.status_label = tk.Label(frame, text="ShieldPro GUI", bg=colors["bg"], fg=colors["fg"], font=("Segoe UI", 24))
-            self.status_label.pack(pady=100)
-
-    def create_tabs_ttk(self):
-        self.dashboard_frame = self.create_dashboard()
-        self.notebook.add(self.dashboard_frame, text=t("dashboard"))
-
-        self.scan_frame = self.create_scan_tab()
-        self.notebook.add(self.scan_frame, text=t("scan"))
-
-        self.quarantine_frame = self.create_quarantine_tab()
-        self.notebook.add(self.quarantine_frame, text=t("quarantine"))
-
-        self.log_frame = self.create_log_tab()
-        self.notebook.add(self.log_frame, text=t("log"))
-
-        self.settings_frame = self.create_settings_tab()
-        self.notebook.add(self.settings_frame, text=t("settings"))
-
-        self.profile_frame = self.create_profile_tab()
-        self.notebook.add(self.profile_frame, text=t("profile"))
-
-    def create_dashboard(self):
-        colors = self.get_colors()
-        frame = tk.Frame(self.root, bg=colors["bg"])
-
-        tk.Label(frame, text="🛡️ ShieldPro", bg=colors["bg"], fg=colors["fg"], font=("Segoe UI", 20, "bold")).pack(pady=20)
-
-        info_frame = tk.Frame(frame, bg=colors["frame_bg"], padx=20, pady=20)
-        info_frame.pack(fill="x", padx=20)
-
-        self.status_text = tk.Label(info_frame, text=t("protection_active"), bg=colors["frame_bg"], fg=colors["success"], font=("Segoe UI", 14, "bold"))
-        self.status_text.pack()
-
-        tk.Label(info_frame, text="", bg=colors["frame_bg"]).pack()
-
-        btn_frame = tk.Frame(info_frame, bg=colors["frame_bg"])
-        btn_frame.pack(pady=10)
-
-        tk.Button(btn_frame, text=t("quick_scan"), bg=colors["button_bg"], fg=colors["button_fg"], font=("Segoe UI", 11),
-                  command=self.quick_scan, padx=15, pady=8).pack(side="left", padx=5)
-        tk.Button(btn_frame, text=t("full_scan"), bg=colors["button_bg"], fg=colors["button_fg"], font=("Segoe UI", 11),
-                  command=self.full_scan, padx=15, pady=8).pack(side="left", padx=5)
-        tk.Button(btn_frame, text=t("update_db"), bg=colors["success"], fg=colors["button_fg"], font=("Segoe UI", 11),
-                  command=self.update_db, padx=15, pady=8).pack(side="left", padx=5)
-
-        tk.Label(frame, text=f"{t('signatures')}: {len(scanner.signatures)} {t('entries')}", bg=colors["bg"], fg=colors["text_secondary"]).pack()
-
-        return frame
-
-    def create_scan_tab(self):
-        colors = self.get_colors()
-        frame = tk.Frame(self.root, bg=colors["bg"])
-        tk.Label(frame, text=t("scan"), bg=colors["bg"], fg=colors["fg"], font=("Segoe UI", 16, "bold")).pack(pady=10)
-
-        opt_frame = tk.Frame(frame, bg=colors["bg"])
-        opt_frame.pack(pady=10)
-
+    def _scan_tab(self):
+        c = self.theme; f = tk.Frame(self.root, bg=c["bg"])
+        tk.Label(f, text=t("scan"), bg=c["bg"], fg=c["fg"], font=("Segoe UI", 16, "bold")).pack(pady=10)
+        of = tk.Frame(f, bg=c["bg"]); of.pack(pady=5)
         self.scan_type = tk.StringVar(value="quick")
-        tk.Radiobutton(opt_frame, text=t("quick"), variable=self.scan_type, value="quick", bg=colors["bg"], fg=colors["fg"], selectcolor=colors["frame_bg"]).pack(side="left", padx=10)
-        tk.Radiobutton(opt_frame, text=t("full"), variable=self.scan_type, value="full", bg=colors["bg"], fg=colors["fg"], selectcolor=colors["frame_bg"]).pack(side="left", padx=10)
-        tk.Radiobutton(opt_frame, text=t("custom"), variable=self.scan_type, value="custom", bg=colors["bg"], fg=colors["fg"], selectcolor=colors["frame_bg"]).pack(side="left", padx=10)
-
+        for txt, val in [(t("quick_scan"), "quick"), (t("full_scan"), "full"), (t("custom_scan"), "custom")]:
+            tk.Radiobutton(of, text=txt, variable=self.scan_type, value=val, bg=c["bg"], fg=c["fg"]).pack(side="left", padx=8)
         self.custom_path = None
-        tk.Button(opt_frame, text=t("select_folder"), bg=colors["secondary"], fg=colors["fg"], command=self.select_folder).pack(side="left", padx=10)
+        self._btn(of, t("custom_scan"), self._select_folder, bg=c["secondary"]).pack(side="left", padx=5)
+        self.path_lbl = tk.Label(f, text="", bg=c["bg"], fg=c["text2"]); self.path_lbl.pack()
+        bf = tk.Frame(f, bg=c["bg"]); bf.pack(pady=8)
+        self.start_btn = self._btn(bf, t("start"), self._start_scan); self.start_btn.pack(side="left", padx=5)
+        self.stop_btn = self._btn(bf, t("stop"), self._stop_scan, bg=c["danger"], state="disabled"); self.stop_btn.pack(side="left", padx=5)
+        self.progress = tk.Label(f, text=t("no_threats"), bg=c["bg"], fg=c["text2"]); self.progress.pack(pady=5)
+        rf = tk.Frame(f, bg=c["frame_bg"], padx=10, pady=10); rf.pack(fill="both", expand=True, padx=15, pady=10)
+        self.threats_list = tk.Listbox(rf, bg=c["bg"], fg=c["fg"], height=12); self.threats_list.pack(fill="both", expand=True)
+        return f
 
-        self.path_label = tk.Label(frame, text=t("folder_not_selected"), bg=colors["bg"], fg=colors["text_secondary"])
-        self.path_label.pack()
+    def _select_folder(self):
+        d = filedialog.askdirectory()
+        if d: self.custom_path = d; self.path_lbl.config(text=d)
 
-        btn_frame = tk.Frame(frame, bg=colors["bg"])
-        btn_frame.pack(pady=10)
+    def _start_scan(self):
+        if self.is_scanning: return
+        st = self.scan_type.get()
+        paths = [os.path.expanduser("~/Downloads"), os.path.expanduser("~/Documents")] if st == "quick" else \
+                [os.path.expandvars("%SystemRoot%"), os.path.expanduser("~")] if st == "full" else \
+                [self.custom_path] if self.custom_path else None
+        if not paths or not paths[0]:
+            messagebox.showwarning(t("warning"), t("select_folder")); return
+        self.is_scanning = True; self.start_btn.config(state="disabled"); self.stop_btn.config(state="normal")
+        self.threats_list.delete(0, tk.END); self.threats = []
+        max_sz = cfg.scan.max_file_size_mb * 1024 * 1024
+        threading.Thread(target=self._scan_worker, args=(paths, max_sz), daemon=True).start()
 
-        self.start_btn = tk.Button(btn_frame, text=t("start_scan"), bg=colors["button_bg"], fg=colors["button_fg"], font=("Segoe UI", 12),
-                                   command=self.start_scan, padx=20, pady=10)
-        self.start_btn.pack(side="left", padx=5)
-
-        self.stop_btn = tk.Button(btn_frame, text=t("stop_scan"), bg=colors["danger"], fg=colors["button_fg"], font=("Segoe UI", 12),
-                                  command=self.stop_scan, padx=20, pady=10, state="disabled")
-        self.stop_btn.pack(side="left", padx=5)
-
-        self.progress = tk.Label(frame, text=t("ready"), bg=colors["bg"], fg=colors["text_secondary"])
-        self.progress.pack(pady=5)
-
-        results_frame = tk.Frame(frame, bg=colors["frame_bg"], padx=10, pady=10)
-        results_frame.pack(fill="both", expand=True, padx=20, pady=10)
-
-        tk.Label(results_frame, text=t("threats_found") + ":", bg=colors["frame_bg"], fg=colors["fg"]).pack(anchor="w")
-
-        self.threats_list = tk.Listbox(results_frame, bg=colors["bg"], fg=colors["fg"], height=10)
-        self.threats_list.pack(fill="both", expand=True)
-
-        return frame
-
-    def create_quarantine_tab(self):
-        colors = self.get_colors()
-        frame = tk.Frame(self.root, bg=colors["bg"])
-        tk.Label(frame, text=t("quarantine_title"), bg=colors["bg"], fg=colors["fg"], font=("Segoe UI", 16, "bold")).pack(pady=10)
-
-        tk.Label(frame, text=t("quarantine_empty").replace("пуст", "isolated files:"), bg=colors["bg"], fg=colors["text_secondary"]).pack()
-
-        self.quarantine_list = tk.Listbox(frame, bg=colors["frame_bg"], fg=colors["fg"], height=20)
-        self.quarantine_list.pack(fill="both", expand=True, padx=20, pady=10)
-
-        btn_frame = tk.Frame(frame, bg=colors["bg"])
-        btn_frame.pack(pady=10)
-
-        tk.Button(btn_frame, text=t("refresh"), bg=colors["secondary"], fg=colors["fg"], command=self.load_quarantine).pack(side="left", padx=5)
-        tk.Button(btn_frame, text=t("delete_all"), bg=colors["danger"], fg=colors["button_fg"], command=self.clear_quarantine).pack(side="left", padx=5)
-
-        return frame
-
-    def create_log_tab(self):
-        colors = self.get_colors()
-        frame = tk.Frame(self.root, bg=colors["bg"])
-        tk.Label(frame, text=t("log_title"), bg=colors["bg"], fg=colors["fg"], font=("Segoe UI", 16, "bold")).pack(pady=10)
-
-        self.log_list = tk.Listbox(frame, bg=colors["frame_bg"], fg=colors["fg"], height=25)
-        self.log_list.pack(fill="both", expand=True, padx=20, pady=10)
-
-        tk.Button(frame, text=t("clear_log"), bg=colors["secondary"], fg=colors["fg"], command=self.clear_log).pack(pady=5)
-
-        return frame
-
-    def create_settings_tab(self):
-        colors = self.get_colors()
-        frame = tk.Frame(self.root, bg=colors["bg"])
-        tk.Label(frame, text=t("settings_title"), bg=colors["bg"], fg=colors["fg"], font=("Segoe UI", 16, "bold")).pack(pady=10)
-
-        scan_settings = settings.get("scan_settings", DEFAULT_SETTINGS["scan_settings"])
-
-        scan_frame = tk.LabelFrame(frame, text=t("scan_settings"), bg=colors["frame_bg"], fg=colors["fg"], padx=10, pady=10)
-        scan_frame.pack(fill="x", padx=20, pady=10)
-
-        tk.Label(scan_frame, text=t("max_file_size"), bg=colors["frame_bg"], fg=colors["fg"]).grid(row=0, column=0, sticky="w", pady=5)
-        self.max_file_size_var = tk.IntVar(value=scan_settings.get("max_file_size_mb", 50))
-        tk.Entry(scan_frame, textvariable=self.max_file_size_var, width=10).grid(row=0, column=1, padx=10, pady=5)
-
-        tk.Label(scan_frame, text=t("scan_depth"), bg=colors["frame_bg"], fg=colors["fg"]).grid(row=1, column=0, sticky="w", pady=5)
-        self.scan_depth_var = tk.IntVar(value=scan_settings.get("scan_depth", 3))
-        tk.Entry(scan_frame, textvariable=self.scan_depth_var, width=10).grid(row=1, column=1, padx=10, pady=5)
-
-        self.scan_exe_var = tk.BooleanVar(value=scan_settings.get("scan_exe", True))
-        tk.Checkbutton(scan_frame, text=t("scan_exe"), variable=self.scan_exe_var, bg=colors["frame_bg"], fg=colors["fg"]).grid(row=2, column=0, sticky="w", pady=2)
-
-        self.scan_dll_var = tk.BooleanVar(value=scan_settings.get("scan_dll", True))
-        tk.Checkbutton(scan_frame, text=t("scan_dll"), variable=self.scan_dll_var, bg=colors["frame_bg"], fg=colors["fg"]).grid(row=3, column=0, sticky="w", pady=2)
-
-        self.scan_doc_var = tk.BooleanVar(value=scan_settings.get("scan_doc", True))
-        tk.Checkbutton(scan_frame, text=t("scan_doc"), variable=self.scan_doc_var, bg=colors["frame_bg"], fg=colors["fg"]).grid(row=4, column=0, sticky="w", pady=2)
-
-        self.scan_archives_var = tk.BooleanVar(value=scan_settings.get("scan_archives", True))
-        tk.Checkbutton(scan_frame, text=t("scan_archives"), variable=self.scan_archives_var, bg=colors["frame_bg"], fg=colors["fg"]).grid(row=5, column=0, sticky="w", pady=2)
-
-        self.heuristic_var = tk.BooleanVar(value=scan_settings.get("heuristic_analysis", True))
-        tk.Checkbutton(scan_frame, text=t("heuristic"), variable=self.heuristic_var, bg=colors["frame_bg"], fg=colors["fg"]).grid(row=6, column=0, sticky="w", pady=2)
-
-        self.quarantine_auto_var = tk.BooleanVar(value=scan_settings.get("quarantine_threats", True))
-        tk.Checkbutton(scan_frame, text=t("quarantine_auto"), variable=self.quarantine_auto_var, bg=colors["frame_bg"], fg=colors["fg"]).grid(row=7, column=0, sticky="w", pady=2)
-
-        appearance_frame = tk.LabelFrame(frame, text=t("appearance"), bg=colors["frame_bg"], fg=colors["fg"], padx=10, pady=10)
-        appearance_frame.pack(fill="x", padx=20, pady=10)
-
-        tk.Label(appearance_frame, text=t("theme"), bg=colors["frame_bg"], fg=colors["fg"]).grid(row=0, column=0, sticky="w", pady=5)
-        self.theme_var = tk.StringVar(value=settings.get("theme", "dark"))
-        tk.Radiobutton(appearance_frame, text=t("dark"), variable=self.theme_var, value="dark", bg=colors["frame_bg"], fg=colors["fg"]).grid(row=0, column=1, padx=10)
-        tk.Radiobutton(appearance_frame, text=t("light"), variable=self.theme_var, value="light", bg=colors["frame_bg"], fg=colors["fg"]).grid(row=0, column=2, padx=10)
-
-        tk.Label(appearance_frame, text=t("language"), bg=colors["frame_bg"], fg=colors["fg"]).grid(row=1, column=0, sticky="w", pady=5)
-        self.lang_var = tk.StringVar(value=settings.get("language", "ru"))
-        tk.Radiobutton(appearance_frame, text="Русский", variable=self.lang_var, value="ru", bg=colors["frame_bg"], fg=colors["fg"]).grid(row=1, column=1, padx=10)
-        tk.Radiobutton(appearance_frame, text="English", variable=self.lang_var, value="en", bg=colors["frame_bg"], fg=colors["fg"]).grid(row=1, column=2, padx=10)
-
-        tk.Button(frame, text=t("save_settings"), bg=colors["success"], fg=colors["button_fg"], font=("Segoe UI", 12),
-                  command=self.save_settings, padx=20, pady=10).pack(pady=20)
-
-        return frame
-
-    def create_profile_tab(self):
-        colors = self.get_colors()
-        frame = tk.Frame(self.root, bg=colors["bg"])
-        tk.Label(frame, text=t("profile_title"), bg=colors["bg"], fg=colors["fg"], font=("Segoe UI", 16, "bold")).pack(pady=10)
-
-        profile = settings.get("profile", DEFAULT_SETTINGS["profile"])
-
-        info_frame = tk.Frame(frame, bg=colors["frame_bg"], padx=20, pady=20)
-        info_frame.pack(fill="x", padx=20, pady=10)
-
-        tk.Label(info_frame, text=t("username") + ":", bg=colors["frame_bg"], fg=colors["fg"]).grid(row=0, column=0, sticky="w", pady=5)
-        self.username_var = tk.StringVar(value=profile.get("username", ""))
-        tk.Entry(info_frame, textvariable=self.username_var, width=30).grid(row=0, column=1, padx=10, pady=5)
-
-        tk.Label(info_frame, text=t("email") + ":", bg=colors["frame_bg"], fg=colors["fg"]).grid(row=1, column=0, sticky="w", pady=5)
-        self.email_var = tk.StringVar(value=profile.get("email", ""))
-        tk.Entry(info_frame, textvariable=self.email_var, width=30).grid(row=1, column=1, padx=10, pady=5)
-
-        tk.Label(info_frame, text=t("protection_level") + ":", bg=colors["frame_bg"], fg=colors["fg"]).grid(row=2, column=0, sticky="w", pady=5)
-        self.protection_var = tk.StringVar(value=profile.get("protection_level", "Стандартный"))
-        protection_combo = tk.Combobox(info_frame, textvariable=self.protection_var, values=[t("standard"), t("enhanced"), t("maximum")], width=28, state="readonly")
-        protection_combo.grid(row=2, column=1, padx=10, pady=5)
-
-        tk.Button(frame, text=t("edit_profile"), bg=colors["button_bg"], fg=colors["button_fg"], font=("Segoe UI", 11),
-                  command=self.save_profile, padx=15, pady=8).pack(pady=10)
-
-        stats_frame = tk.LabelFrame(frame, text=t("statistics"), bg=colors["frame_bg"], fg=colors["fg"], padx=20, pady=15)
-        stats_frame.pack(fill="x", padx=20, pady=10)
-
-        stats = scanner.stats
-
-        tk.Label(stats_frame, text=f"{t('total_scans')}: {stats.get('total_scans', 0)}", bg=colors["frame_bg"], fg=colors["fg"]).pack(anchor="w")
-        tk.Label(stats_frame, text=f"{t('threats_detected')}: {stats.get('threats_detected', 0)}", bg=colors["frame_bg"], fg=colors["fg"]).pack(anchor="w")
-        tk.Label(stats_frame, text=f"{t('files_quarantined')}: {stats.get('files_quarantined', 0)}", bg=colors["frame_bg"], fg=colors["fg"]).pack(anchor="w")
-
-        last_scan = stats.get("last_scan", None)
-        last_scan_str = t("never") if not last_scan else last_scan
-        tk.Label(stats_frame, text=f"{t('last_scan')}: {last_scan_str}", bg=colors["frame_bg"], fg=colors["fg"]).pack(anchor="w")
-
-        return frame
-
-    def save_settings(self):
-        settings["theme"] = self.theme_var.get()
-        settings["language"] = self.lang_var.get()
-        settings["scan_settings"] = {
-            "max_file_size_mb": self.max_file_size_var.get(),
-            "scan_depth": self.scan_depth_var.get(),
-            "scan_exe": self.scan_exe_var.get(),
-            "scan_dll": self.scan_dll_var.get(),
-            "scan_doc": self.scan_doc_var.get(),
-            "scan_archives": self.scan_archives_var.get(),
-            "heuristic_analysis": self.heuristic_var.get(),
-            "quarantine_threats": self.quarantine_auto_var.get()
-        }
-        save_settings(settings)
-        self.log(t("settings_saved"))
-
-        from tkinter import messagebox
-        messagebox.showinfo("ShieldPro", t("settings_saved"))
-
-    def save_profile(self):
-        profile = settings.get("profile", {})
-        profile["username"] = self.username_var.get()
-        profile["email"] = self.email_var.get()
-
-        level = self.protection_var.get()
-        if level == t("standard"):
-            profile["protection_level"] = "Стандартный"
-        elif level == t("enhanced"):
-            profile["protection_level"] = "Усиленный"
-        elif level == t("maximum"):
-            profile["protection_level"] = "Максимальный"
-
-        settings["profile"] = profile
-        save_settings(settings)
-        self.log(t("profile_saved"))
-
-        from tkinter import messagebox
-        messagebox.showinfo("ShieldPro", t("profile_saved"))
-
-    def select_folder(self):
-        from tkinter import filedialog
-        folder = filedialog.askdirectory()
-        if folder:
-            self.custom_path = folder
-            self.path_label.config(text=folder)
-
-    def quick_scan(self):
-        self.scan_type.set("quick")
-        self.start_scan()
-
-    def full_scan(self):
-        self.scan_type.set("full")
-        self.start_scan()
-
-    def update_db(self):
-        self.log(t("update_db") + "...")
-        from tkinter import messagebox
-        messagebox.showinfo(t("update_db"), "Checking for updates...\n\n(Demo mode)")
-
-    def start_scan(self):
-        if self.is_scanning:
-            return
-
-        self.is_scanning = True
-        self.start_btn.config(state="disabled")
-        self.stop_btn.config(state="normal")
-        self.threats_list.delete(0, tk.END)
-        self.threats = []
-
-        scan_type = self.scan_type.get()
-        paths = []
-
-        if scan_type == "quick":
-            paths = [os.path.expanduser("~/Downloads"), os.path.expanduser("~/Documents")]
-        elif scan_type == "full":
-            paths = [os.path.expandvars("%SystemRoot%"), os.path.expanduser("~")]
-        elif scan_type == "custom" and self.custom_path:
-            paths = [self.custom_path]
-        else:
-            from tkinter import messagebox
-            messagebox.showwarning(t("warning"), t("select_folder_warning"))
-            self.is_scanning = False
-            self.start_btn.config(state="normal")
-            self.stop_btn.config(state="disabled")
-            return
-
-        self.progress.config(text=t("scanning"))
-        threading.Thread(target=self.scan_worker, args=(paths,), daemon=True).start()
-
-    def scan_worker(self, paths):
+    def _scan_worker(self, paths, max_sz):
         count = 0
-        scan_settings = settings.get("scan_settings", DEFAULT_SETTINGS["scan_settings"])
-        max_size = scan_settings.get("max_file_size_mb", 50) * 1024 * 1024
-        quarantine = scan_settings.get("quarantine_threats", True)
-
-        for path in paths:
-            if not self.is_scanning:
-                break
+        for p in paths:
+            if not self.is_scanning: break
             try:
-                if os.path.isfile(path):
-                    if os.path.getsize(path) <= max_size:
-                        count += 1
-                        self.check_file(path, quarantine)
-                elif os.path.isdir(path):
-                    for root, dirs, files in os.walk(path):
-                        if not self.is_scanning:
-                            break
-                        for file in files:
-                            if not self.is_scanning:
-                                break
-                            filepath = os.path.join(root, file)
+                if os.path.isfile(p) and os.path.getsize(p) <= max_sz:
+                    count += 1; self._check_file(p)
+                elif os.path.isdir(p):
+                    for root, _, files in os.walk(p):
+                        if not self.is_scanning: break
+                        for fn in files:
+                            if not self.is_scanning: break
+                            fp = os.path.join(root, fn)
                             try:
-                                if os.path.getsize(filepath) <= max_size:
-                                    count += 1
-                                    self.check_file(filepath, quarantine)
-                                    self.root.after(0, lambda c=count: self.progress.config(text=f"Checked: {c} files"))
-                            except:
-                                pass
-            except:
-                pass
+                                if os.path.getsize(fp) <= max_sz:
+                                    count += 1; self._check_file(fp)
+                                    self.root.after(0, lambda c=count: self.progress.config(text=f"Checked: {c}"))
+                            except: pass
+            except: pass
+        self.root.after(0, lambda: self._scan_done(count))
 
-        self.root.after(0, self.scan_complete)
-
-    def check_file(self, filepath, quarantine):
-        threat = scanner.scan_file(filepath)
+    def _check_file(self, fp):
+        threat = scanner.scan_file(fp)
         if threat:
-            self.threats.append((filepath, threat))
-            self.root.after(0, lambda f=filepath, t=threat: self.threats_list.insert(tk.END, f"⚠️ {t}: {f}"))
-            self.log(f"Threat detected: {t} in {f}")
+            self.threats.append((fp, threat))
+            self.root.after(0, lambda f=fp, t=threat: self.threats_list.insert(tk.END, f"⚠ {t}: {f}"))
+            if cfg.scan.auto_quarantine: self._quarantine_file(fp, threat)
 
-            if quarantine:
-                self.quarantine_file(filepath, threat)
-
-    def quarantine_file(self, filepath, threat):
+    def _quarantine_file(self, fp, threat):
         try:
-            if not os.path.exists(filepath):
-                return
+            if not os.path.exists(fp): return
+            os.makedirs(QUAR_DIR, exist_ok=True)
+            qn = f"{os.path.basename(fp)}_{int(time.time())}"; qp = os.path.join(QUAR_DIR, qn)
+            shutil.copy2(fp, qp); os.remove(fp)
+            self.quarantine.append({"original": fp, "quarantine": qp, "threat": threat, "date": datetime.datetime.now().isoformat()})
+            self._save_quar()
+            scanner.stats["files_quarantined"] += 1; scanner.stats["threats_detected"] += 1; scanner.save_stats()
+        except: pass
 
-            qdir = QUARANTINE_DIR
-            os.makedirs(qdir, exist_ok=True)
+    def _scan_done(self, count):
+        self.is_scanning = False; self.start_btn.config(state="normal"); self.stop_btn.config(state="disabled")
+        self.progress.config(text=f"{t('scan_done')}. {t('threats_count')}: {len(self.threats)}")
+        scanner.stats["total_scans"] += 1; scanner.stats["last_scan"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); scanner.save_stats()
+        self._log(f"Scan done. Threats: {len(self.threats)}")
 
-            filename = os.path.basename(filepath)
-            unique_name = f"{filename}_{int(time.time())}"
-            qpath = os.path.join(qdir, unique_name)
+    def _stop_scan(self): self.is_scanning = False
+    def _quick_scan(self): self.scan_type.set("quick"); self._start_scan()
+    def _full_scan(self): self.scan_type.set("full"); self._start_scan()
+    def _update_db(self): messagebox.showinfo(t("update_db"), "Demo mode")
 
-            shutil.copy2(filepath, qpath)
-            os.remove(filepath)
+    def _quar_tab(self):
+        c = self.theme; f = tk.Frame(self.root, bg=c["bg"])
+        tk.Label(f, text=t("quarantine"), bg=c["bg"], fg=c["fg"], font=("Segoe UI", 16, "bold")).pack(pady=10)
+        self.quar_list = tk.Listbox(f, bg=c["frame_bg"], fg=c["fg"], height=18); self.quar_list.pack(fill="both", expand=True, padx=15, pady=5)
+        bf = tk.Frame(f, bg=c["bg"]); bf.pack(pady=8)
+        self._btn(bf, t("refresh"), self._refresh_quar, bg=c["secondary"]).pack(side="left", padx=5)
+        self._btn(bf, t("delete_all"), self._clear_quar, bg=c["danger"]).pack(side="left", padx=5)
+        self._refresh_quar(); return f
 
-            self.quarantine_items.append({
-                "original_path": filepath,
-                "quarantine_path": qpath,
-                "threat": threat,
-                "date": datetime.datetime.now().isoformat()
-            })
-
-            qfile = os.path.join(DATA_DIR, "quarantine.json")
-            with open(qfile, 'w') as f:
-                json.dump(self.quarantine_items, f)
-
-            scanner.stats["files_quarantined"] = scanner.stats.get("files_quarantined", 0) + 1
-            scanner.stats["threats_detected"] = scanner.stats.get("threats_detected", 0) + 1
-            scanner.save_stats()
-
-            self.log(f"File quarantined: {filepath}")
-        except Exception as e:
-            self.log(f"Quarantine error: {str(e)}")
-
-    def scan_complete(self):
-        self.is_scanning = False
-        self.start_btn.config(state="normal")
-        self.stop_btn.config(state="disabled")
-        count = len(self.threats)
-        self.progress.config(text=f"{t('scan_complete')}. {t('threats_count')}: {count}")
-        self.log(f"Scan complete. Threats: {count}")
-
-        scanner.stats["total_scans"] = scanner.stats.get("total_scans", 0) + 1
-        scanner.stats["last_scan"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        scanner.save_stats()
-
-    def stop_scan(self):
-        self.is_scanning = False
-        self.progress.config(text="Scan stopped")
-
-    def load_quarantine(self):
-        self.quarantine_list.delete(0, tk.END)
-        qfile = os.path.join(DATA_DIR, "quarantine.json")
-        if os.path.exists(qfile):
-            try:
-                with open(qfile, 'r') as f:
-                    self.quarantine_items = json.load(f)
-            except:
-                self.quarantine_items = []
-
-        if not self.quarantine_items:
-            self.quarantine_list.insert(tk.END, t("quarantine_empty"))
+    def _refresh_quar(self):
+        self.quar_list.delete(0, tk.END)
+        if not self.quarantine: self.quar_list.insert(tk.END, t("quarantine_empty"))
         else:
-            for item in self.quarantine_items:
-                self.quarantine_list.insert(tk.END, f"{item.get('original_path', 'Unknown')} - {item.get('threat', 'Unknown')}")
+            for item in self.quarantine:
+                self.quar_list.insert(tk.END, f"{item['original']} - {item['threat']}")
 
-    def clear_quarantine(self):
-        self.quarantine_items = []
-        qfile = os.path.join(DATA_DIR, "quarantine.json")
-        if os.path.exists(qfile):
-            os.remove(qfile)
-        self.load_quarantine()
-        self.log("Quarantine cleared")
+    def _clear_quar(self):
+        if messagebox.askyesno(t("warning"), t("confirm_clear")):
+            for item in self.quarantine:
+                try:
+                    if os.path.exists(item["quarantine"]): os.remove(item["quarantine"])
+                except: pass
+            self.quarantine.clear(); self._save_quar(); self._refresh_quar()
 
-    def log(self, message):
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        entry = f"[{timestamp}] {message}"
+    def _save_quar(self): json.dump(self.quarantine, open(QUAR_FILE, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    def _load_quar(self):
+        if os.path.exists(QUAR_FILE):
+            try: self.quarantine = json.load(open(QUAR_FILE, encoding="utf-8"))
+            except: self.quarantine = []
+
+    def _log_tab(self):
+        c = self.theme; f = tk.Frame(self.root, bg=c["bg"])
+        tk.Label(f, text=t("log"), bg=c["bg"], fg=c["fg"], font=("Segoe UI", 16, "bold")).pack(pady=10)
+        self.log_list = tk.Listbox(f, bg=c["frame_bg"], fg=c["fg"], height=22); self.log_list.pack(fill="both", expand=True, padx=15, pady=5)
+        self._btn(f, "Очистить", self._clear_log, bg=c["secondary"]).pack(pady=5)
+        self._refresh_log(); return f
+
+    def _log(self, msg):
+        ts = datetime.datetime.now().strftime("%H:%M:%S"); entry = f"[{ts}] {msg}"
         self.log_events.append(entry)
-        self.log_list.insert(tk.END, entry)
-        self.log_list.see(tk.END)
+        try: self.log_list.insert(tk.END, entry); self.log_list.see(tk.END)
+        except: pass
+        try: open(os.path.join(LOG_DIR, "shieldpro.log"), "a", encoding="utf-8").write(entry + "\n")
+        except: pass
 
-        try:
-            with open(os.path.join(LOGS_DIR, "shieldpro.log"), "a", encoding="utf-8") as f:
-                f.write(entry + "\n")
-        except:
-            pass
+    def _refresh_log(self):
+        for e in self.log_events: self.log_list.insert(tk.END, e)
+    def _clear_log(self): self.log_events.clear(); self.log_list.delete(0, tk.END); self._log("Log cleared")
+    def _load_log(self):
+        lf = os.path.join(LOG_DIR, "shieldpro.log")
+        if os.path.exists(lf):
+            for line in open(lf, encoding="utf-8").read().splitlines():
+                if line: self.log_events.append(line)
+        if not self.log_events: self._log("ShieldPro started")
 
-    def clear_log(self):
-        self.log_events = []
-        self.log_list.delete(0, tk.END)
-        self.log("Log cleared")
+    def _settings_tab(self):
+        c = self.theme; f = tk.Frame(self.root, bg=c["bg"])
+        cv = tk.Canvas(f, bg=c["bg"]); cv.pack(side="left", fill="both", expand=True)
+        sb = tk.Scrollbar(f, orient="vertical", command=cv.yview); sb.pack(side="right", fill="y")
+        cv.configure(yscrollcommand=sb.set)
+        inner = tk.Frame(cv, bg=c["bg"]); cv.create_window((0,0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
 
-import tkinter as tk
-from tkinter import ttk
+        # General
+        gf = tk.LabelFrame(inner, text=t("general"), bg=c["frame_bg"], fg=c["fg"], padx=10, pady=8)
+        gf.pack(fill="x", padx=15, pady=5)
+        self.v_autostart = tk.BooleanVar(value=cfg.autostart); tk.Checkbutton(gf, text=t("autostart"), variable=self.v_autostart, bg=c["frame_bg"], fg=c["fg"]).pack(anchor="w")
+        self.v_realtime = tk.BooleanVar(value=cfg.realtime); tk.Checkbutton(gf, text=t("realtime"), variable=self.v_realtime, bg=c["frame_bg"], fg=c["fg"]).pack(anchor="w")
+        self.v_auto_update = tk.BooleanVar(value=cfg.auto_update); tk.Checkbutton(gf, text=t("auto_update"), variable=self.v_auto_update, bg=c["frame_bg"], fg=c["fg"]).pack(anchor="w")
+        self.v_usb = tk.BooleanVar(value=cfg.usb_protection); tk.Checkbutton(gf, text="USB " + t("security"), variable=self.v_usb, bg=c["frame_bg"], fg=c["fg"]).pack(anchor="w")
+        self.v_firewall = tk.BooleanVar(value=cfg.firewall_enabled); tk.Checkbutton(gf, text=t("firewall") if "firewall" in LANG[cfg.language] else "Firewall", variable=self.v_firewall, bg=c["frame_bg"], fg=c["fg"]).pack(anchor="w")
+
+        # Scan
+        sf2 = tk.LabelFrame(inner, text=t("scan_cfg"), bg=c["frame_bg"], fg=c["fg"], padx=10, pady=8)
+        sf2.pack(fill="x", padx=15, pady=5)
+        tk.Label(sf2, text=t("max_file_size"), bg=c["frame_bg"], fg=c["fg"]).grid(row=0, column=0, sticky="w", pady=3)
+        self.v_max_sz = tk.IntVar(value=cfg.scan.max_file_size_mb); tk.Entry(sf2, textvariable=self.v_max_sz, width=8).grid(row=0, column=1, padx=5)
+        tk.Label(sf2, text=t("scan_depth"), bg=c["frame_bg"], fg=c["fg"]).grid(row=1, column=0, sticky="w", pady=3)
+        self.v_depth = tk.IntVar(value=cfg.scan.scan_depth); tk.Entry(sf2, textvariable=self.v_depth, width=8).grid(row=1, column=1, padx=5)
+        tk.Label(sf2, text=t("threads"), bg=c["frame_bg"], fg=c["fg"]).grid(row=2, column=0, sticky="w", pady=3)
+        self.v_threads = tk.IntVar(value=cfg.scan.threads); tk.Entry(sf2, textvariable=self.v_threads, width=8).grid(row=2, column=1, padx=5)
+        self.v_exe = tk.BooleanVar(value=cfg.scan.scan_exe); tk.Checkbutton(sf2, text=t("scan_exe"), variable=self.v_exe, bg=c["frame_bg"], fg=c["fg"]).grid(row=3, column=0, sticky="w")
+        self.v_dll = tk.BooleanVar(value=cfg.scan.scan_dll); tk.Checkbutton(sf2, text=t("scan_dll"), variable=self.v_dll, bg=c["frame_bg"], fg=c["fg"]).grid(row=4, column=0, sticky="w")
+        self.v_doc = tk.BooleanVar(value=cfg.scan.scan_doc); tk.Checkbutton(sf2, text=t("scan_doc"), variable=self.v_doc, bg=c["frame_bg"], fg=c["fg"]).grid(row=5, column=0, sticky="w")
+        self.v_archives = tk.BooleanVar(value=cfg.scan.scan_archives); tk.Checkbutton(sf2, text=t("scan_archives"), variable=self.v_archives, bg=c["frame_bg"], fg=c["fg"]).grid(row=6, column=0, sticky="w")
+        self.v_heuristic = tk.BooleanVar(value=cfg.scan.heuristic); tk.Checkbutton(sf2, text=t("heuristic"), variable=self.v_heuristic, bg=c["frame_bg"], fg=c["fg"]).grid(row=7, column=0, sticky="w")
+        self.v_autoquar = tk.BooleanVar(value=cfg.scan.auto_quarantine); tk.Checkbutton(sf2, text=t("auto_quarantine"), variable=self.v_autoquar, bg=c["frame_bg"], fg=c["fg"]).grid(row=8, column=0, sticky="w")
+        tk.Label(sf2, text=t("exclude_paths"), bg=c["frame_bg"], fg=c["fg"]).grid(row=9, column=0, sticky="w", pady=3)
+        self.v_excl_paths = tk.StringVar(value=cfg.scan.exclude_paths); tk.Entry(sf2, textvariable=self.v_excl_paths, width=30).grid(row=9, column=1, padx=5)
+        tk.Label(sf2, text=t("exclude_ext"), bg=c["frame_bg"], fg=c["fg"]).grid(row=10, column=0, sticky="w", pady=3)
+        self.v_excl_ext = tk.StringVar(value=cfg.scan.exclude_ext); tk.Entry(sf2, textvariable=self.v_excl_ext, width=30).grid(row=10, column=1, padx=5)
+
+        # Appearance
+        af = tk.LabelFrame(inner, text=t("appearance"), bg=c["frame_bg"], fg=c["fg"], padx=10, pady=8)
+        af.pack(fill="x", padx=15, pady=5)
+        tk.Label(af, text=t("theme"), bg=c["frame_bg"], fg=c["fg"]).grid(row=0, column=0, sticky="w", pady=3)
+        self.v_theme = tk.StringVar(value=cfg.theme)
+        for txt, val in [(t("dark"), "dark"), (t("light"), "light"), (t("blue"), "blue")]:
+            tk.Radiobutton(af, text=txt, variable=self.v_theme, value=val, bg=c["frame_bg"], fg=c["fg"]).grid(row=0, column={"dark":1,"light":2,"blue":3}[val], padx=5)
+        tk.Label(af, text=t("language"), bg=c["frame_bg"], fg=c["fg"]).grid(row=1, column=0, sticky="w", pady=3)
+        self.v_lang = tk.StringVar(value=cfg.language)
+        tk.Radiobutton(af, text="Русский", variable=self.v_lang, value="ru", bg=c["frame_bg"], fg=c["fg"]).grid(row=1, column=1, padx=10)
+        tk.Radiobutton(af, text="English", variable=self.v_lang, value="en", bg=c["frame_bg"], fg=c["fg"]).grid(row=1, column=2, padx=10)
+
+        # Notifications
+        nf = tk.LabelFrame(inner, text=t("notifications"), bg=c["frame_bg"], fg=c["fg"], padx=10, pady=8)
+        nf.pack(fill="x", padx=15, pady=5)
+        self.v_sound = tk.BooleanVar(value=cfg.sound); tk.Checkbutton(nf, text=t("sound"), variable=self.v_sound, bg=c["frame_bg"], fg=c["fg"]).pack(anchor="w")
+        self.v_popup = tk.BooleanVar(value=cfg.popup); tk.Checkbutton(nf, text=t("popup"), variable=self.v_popup, bg=c["frame_bg"], fg=c["fg"]).pack(anchor="w")
+
+        # Import/Export
+        ief = tk.Frame(inner, bg=c["bg"]); ief.pack(pady=10)
+        self._btn(ief, t("export"), self._export_settings, bg=c["secondary"]).pack(side="left", padx=5)
+        self._btn(ief, t("import"), self._import_settings, bg=c["secondary"]).pack(side="left", padx=5)
+
+        self._btn(inner, t("save"), self._save_settings, bg=c["success"], padx=20, pady=8).pack(pady=10)
+        return f
+
+    def _save_settings(self):
+        cfg.theme = self.v_theme.get(); cfg.language = self.v_lang.get()
+        cfg.autostart = self.v_autostart.get(); cfg.realtime = self.v_realtime.get()
+        cfg.auto_update = self.v_auto_update.get(); cfg.sound = self.v_sound.get()
+        cfg.popup = self.v_popup.get(); cfg.usb_protection = self.v_usb.get()
+        cfg.firewall_enabled = self.v_firewall.get()
+        cfg.scan.max_file_size_mb = self.v_max_sz.get(); cfg.scan.scan_depth = self.v_depth.get()
+        cfg.scan.threads = self.v_threads.get()
+        cfg.scan.scan_exe = self.v_exe.get(); cfg.scan.scan_dll = self.v_dll.get()
+        cfg.scan.scan_doc = self.v_doc.get(); cfg.scan.scan_archives = self.v_archives.get()
+        cfg.scan.heuristic = self.v_heuristic.get(); cfg.scan.auto_quarantine = self.v_autoquar.get()
+        cfg.scan.exclude_paths = self.v_excl_paths.get(); cfg.scan.exclude_ext = self.v_excl_ext.get()
+        cfg.save(); self._log(t("settings_saved")); messagebox.showinfo(t("save"), t("settings_saved"))
+
+    def _export_settings(self):
+        fp = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
+        if fp:
+            json.dump({"theme": cfg.theme, "language": cfg.language, "font_size": cfg.font_size,
+                       "scan": cfg.scan.dict(), "profile": cfg.profile.dict(),
+                       "autostart": cfg.autostart, "realtime": cfg.realtime, "auto_update": cfg.auto_update,
+                       "sound": cfg.sound, "popup": cfg.popup, "usb_protection": cfg.usb_protection,
+                       "firewall_enabled": cfg.firewall_enabled},
+                      open(fp, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+            self._log(t("export_success")); messagebox.showinfo(t("export"), t("export_success"))
+
+    def _import_settings(self):
+        fp = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+        if fp:
+            try:
+                d = json.load(open(fp, encoding="utf-8"))
+                cfg.theme = d.get("theme", "dark"); cfg.language = d.get("language", "ru")
+                cfg.font_size = d.get("font_size", 10); cfg.scan = ScanSettings(d.get("scan", {}))
+                cfg.profile = ProfileSettings(d.get("profile", {}))
+                cfg.autostart = d.get("autostart", False); cfg.realtime = d.get("realtime", True)
+                cfg.auto_update = d.get("auto_update", True); cfg.sound = d.get("sound", True)
+                cfg.popup = d.get("popup", True); cfg.usb_protection = d.get("usb_protection", False)
+                cfg.firewall_enabled = d.get("firewall_enabled", False)
+                cfg.save(); self._log(t("import_success")); messagebox.showinfo(t("import"), t("import_success"))
+            except Exception as e: messagebox.showerror("Error", str(e))
+
+    def _profile_tab(self):
+        c = self.theme; f = tk.Frame(self.root, bg=c["bg"])
+        pf = tk.LabelFrame(f, text="👤 " + t("profile").split()[1], bg=c["frame_bg"], fg=c["fg"], padx=15, pady=10)
+        pf.pack(fill="x", padx=15, pady=8)
+        tk.Label(pf, text=t("username"), bg=c["frame_bg"], fg=c["fg"]).grid(row=0, column=0, sticky="w", pady=5)
+        self.v_username = tk.StringVar(value=cfg.profile.username); tk.Entry(pf, textvariable=self.v_username, width=30).grid(row=0, column=1, padx=10)
+        tk.Label(pf, text=t("email"), bg=c["frame_bg"], fg=c["fg"]).grid(row=1, column=0, sticky="w", pady=5)
+        self.v_email = tk.StringVar(value=cfg.profile.email); tk.Entry(pf, textvariable=self.v_email, width=30).grid(row=1, column=1, padx=10)
+        tk.Label(pf, text=t("level"), bg=c["frame_bg"], fg=c["fg"]).grid(row=2, column=0, sticky="w", pady=5)
+        self.v_level = tk.StringVar(value=cfg.profile.level)
+        ttk.Combobox(pf, textvariable=self.v_level, values=["standard", "enhanced", "maximum"], width=28, state="readonly").grid(row=2, column=1, padx=10)
+        self._btn(pf, t("save"), self._save_profile, bg=c["button_bg"]).grid(row=3, column=1, pady=10)
+
+        sf = tk.LabelFrame(f, text="📊 " + t("stats"), bg=c["frame_bg"], fg=c["fg"], padx=15, pady=10)
+        sf.pack(fill="x", padx=15, pady=8)
+        for lbl, val in [(t("total_scans"), scanner.stats["total_scans"]), (t("total_threats"), scanner.stats["threats_detected"]),
+                         (t("quarantined"), scanner.stats["files_quarantined"]), (t("last_scan"), scanner.stats.get("last_scan", t("never")))]:
+            tk.Label(sf, text=f"{lbl}: {val}", bg=c["frame_bg"], fg=c["fg"]).pack(anchor="w", pady=2)
+
+        hf = tk.LabelFrame(f, text="📜 " + t("scan_history"), bg=c["frame_bg"], fg=c["fg"], padx=10, pady=8)
+        hf.pack(fill="both", expand=True, padx=15, pady=8)
+        self.history_list = tk.Listbox(hf, bg=c["bg"], fg=c["fg"], height=8); self.history_list.pack(fill="both", expand=True)
+        self._refresh_history()
+
+        if2 = tk.LabelFrame(f, text="💻 " + t("system_info"), bg=c["frame_bg"], fg=c["fg"], padx=15, pady=10)
+        if2.pack(fill="x", padx=15, pady=8)
+        for lbl, val in [(t("os"), f"{platform.system()} {platform.release()}"), (t("python"), platform.python_version()),
+                         ("Version", "2.0.0"), ("CPU", platform.processor()), ("Arch", platform.machine())]:
+            tk.Label(if2, text=f"{lbl}: {val}", bg=c["frame_bg"], fg=c["fg"]).pack(anchor="w", pady=2)
+        return f
+
+    def _save_profile(self):
+        cfg.profile.username = self.v_username.get(); cfg.profile.email = self.v_email.get()
+        cfg.profile.level = self.v_level.get(); cfg.save()
+        self._log(t("profile_saved")); messagebox.showinfo(t("save"), t("profile_saved"))
+
+    def _refresh_history(self):
+        self.history_list.delete(0, tk.END)
+        for h in reversed(scanner.stats.get("history", [])):
+            self.history_list.insert(tk.END, f"{h.get('date','')} | {h.get('type','')} | {h.get('files',0)} files | {h.get('threats',0)} threats | {h.get('status','')}")
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = ShieldProGUI(root)
-    root.mainloop()
+    root = tk.Tk(); ShieldProGUI(root); root.mainloop()
