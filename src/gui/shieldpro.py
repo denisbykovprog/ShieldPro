@@ -1,17 +1,18 @@
-"""ShieldPro AntiVirus v2.0 - Optimized PyQt6 Edition"""
+"""ShieldPro AntiVirus v2.0 - Beta 0.2 Pre-Release (Optimized PyQt6 Edition)"""
 import sys, os, ctypes, json, shutil, hashlib, platform, datetime, time, threading
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
-from typing import Optional, Callable
+from typing import Optional
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QLineEdit, QTextEdit,
     QProgressBar, QComboBox, QCheckBox, QGroupBox, QSystemTrayIcon, QMenu, QMessageBox,
     QFileDialog, QHeaderView, QSplitter, QFrame, QStatusBar, QScrollArea, QGridLayout,
     QSizePolicy, QSpinBox, QDoubleSpinBox, QSlider, QStackedWidget, QToolBar, QToolButton,
-    QRadioButton, QButtonGroup, QDialog, QDialogButtonBox, QFormLayout)
+    QRadioButton, QButtonGroup, QDialog, QDialogButtonBox, QFormLayout, QTextBrowser)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize
 from PyQt6.QtGui import QAction, QIcon, QFont, QColor, QPainter, QLinearGradient, QCursor, QPalette, QBrush
 
+VERSION = "Beta 0.2 Pre-Release"
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 SIG_DIR = DATA_DIR / "signatures"
@@ -21,6 +22,7 @@ MODULES_DIR = BASE_DIR / "modules"
 SETTINGS_FILE = DATA_DIR / "settings.json"
 QUAR_FILE = DATA_DIR / "quarantine.json"
 SIG_FILE = SIG_DIR / "signatures.txt"
+FIRST_RUN_FLAG = DATA_DIR / ".first_run_done"
 DB_PATH = BASE_DIR / "shieldpro.db"
 
 for d in (SIG_DIR, QUAR_DIR, LOG_DIR): d.mkdir(parents=True, exist_ok=True)
@@ -28,7 +30,6 @@ for d in (SIG_DIR, QUAR_DIR, LOG_DIR): d.mkdir(parents=True, exist_ok=True)
 if not SIG_FILE.exists():
     SIG_FILE.write_text("EICAR:58354f2150254041505b345c505a58353428505e\nTestVirus:48656c6c6f576f726c64\n")
 
-# ─── Theme Colors ───
 THEMES = {
     "dark": {"bg": "#1E1E1E", "surface": "#252526", "card": "#2D2D30", "border": "#3E3E42",
              "primary": "#0078D7", "primary_hover": "#106EBE", "success": "#4CAF50",
@@ -42,13 +43,13 @@ THEMES = {
 }
 
 LANG = {
-    "ru": {"title": "ShieldPro - Антивирус", "dashboard": "📊 Панель", "scan": "🔍 Сканирование",
-           "quarantine": "📛 Карантин", "log": "📜 Журнал", "settings": "⚙️ Настройки",
-           "profile": "👤 Профиль", "protection": "🛡️ Защита активна", "quick_scan": "🚀 Быстрое",
-           "full_scan": "🔍 Полное", "custom_scan": "📁 Выборочное", "update_db": "📥 Обновить базу",
-           "start": "▶ Старт", "stop": "⏹ Стоп", "pause": "⏸ Пауза", "resume": "▶ Продолжить",
-           "refresh": "🔄 Обновить", "delete_all": "🗑️ Удалить всё", "clear": "Очистить",
-           "save": "💾 Сохранить", "export": "📤 Экспорт", "import": "📥 Импорт",
+    "ru": {"title": "ShieldPro - Антивирус", "dashboard": "Панель", "scan": "Сканирование",
+           "quarantine": "Карантин", "log": "Журнал", "settings": "Настройки",
+           "profile": "Профиль", "protection": "Защита активна", "quick_scan": "Быстрое",
+           "full_scan": "Полное", "custom_scan": "Выборочное", "update_db": "Обновить базу",
+           "start": "Старт", "stop": "Стоп", "pause": "Пауза", "resume": "Продолжить",
+           "refresh": "Обновить", "delete_all": "Удалить всё", "clear": "Очистить",
+           "save": "Сохранить", "export": "Экспорт", "import": "Импорт",
            "no_threats": "Угроз не найдено", "scan_done": "Сканирование завершено",
            "threats_count": "Найдено угроз", "quarantine_empty": "Карантин пуст",
            "stats": "Статистика", "total_scans": "Всего сканирований", "total_threats": "Обнаружено угроз",
@@ -69,7 +70,6 @@ LANG = {
            "threads": "Потоки сканирования", "priority": "Приоритет процесса",
            "low": "Низкий", "normal": "Нормальный", "high": "Высокий",
            "exclude_paths": "Исключения (пути)", "exclude_ext": "Исключения (расширения)",
-           "backup_settings": "Резервная копия настроек", "restore_settings": "Восстановить настройки",
            "settings_saved": "Настройки сохранены", "profile_saved": "Профиль сохранён",
            "export_success": "Настройки экспортированы", "import_success": "Настройки импортированы",
            "warning": "Внимание", "select_folder": "Выберите папку!", "confirm_clear": "Очистить всё?",
@@ -79,14 +79,31 @@ LANG = {
            "avg_duration": "Среднее время", "system_info": "Системная информация",
            "os": "ОС", "python": "Python", "version": "Версия",
            "memory_scan": "Сканирование памяти", "processes": "Процессы",
-           "usb_protection": "USB защита", "firewall": "Файрвол"},
-    "en": {"title": "ShieldPro - Antivirus", "dashboard": "📊 Dashboard", "scan": "🔍 Scanning",
-           "quarantine": "📛 Quarantine", "log": "📜 Log", "settings": "⚙️ Settings",
-           "profile": "👤 Profile", "protection": "🛡️ Protection Active", "quick_scan": "🚀 Quick",
-           "full_scan": "🔍 Full", "custom_scan": "📁 Custom", "update_db": "📥 Update DB",
-           "start": "▶ Start", "stop": "⏹ Stop", "pause": "⏸ Pause", "resume": "▶ Resume",
-           "refresh": "🔄 Refresh", "delete_all": "🗑️ Delete All", "clear": "Clear",
-           "save": "💾 Save", "export": "📤 Export", "import": "📥 Import",
+           "usb_protection": "USB защита", "firewall": "Файрвол",
+           "privacy_title": "Политика Конфиденциальности",
+           "privacy_text": "ShieldPro Beta 0.2 Pre-Release\n\n"
+               "1. Сбор данных: Программа НЕ собирает и НЕ передаёт персональные данные на внешние серверы.\n"
+               "2. Локальное хранение: Все данные (настройки, журнал, карантин) хранятся только на вашем компьютере.\n"
+               "3. Сканирование: Файлы сканируются локально, без отправки в облако.\n"
+               "4. Карантин: Файлы в карантине хранятся локально в папке data/quarantine.\n"
+               "5. Профиль: Данные профиля (имя, email) хранятся только в файле settings.json.\n"
+               "6. Кнопка 'Очистить данные': Позволяет полностью удалить все ваши данные из программы.\n"
+               "7. Обновления: При включённом автообновлении программа проверяет наличие новых версий.\n\n"
+               "Нажимая 'Принять', вы соглашаетесь с данной политикой.",
+           "privacy_accept": "Принять", "privacy_decline": "Отклонить",
+           "privacy_required": "Для использования программы необходимо принять Политику Конфиденциальности.",
+           "clear_data": "Очистить Данные", "confirm_clear_data": "Вы уверены? Это удалит ВСЕ данные: профиль, настройки, журнал, карантин, статистику. Действие необратимо!",
+           "data_cleared": "Все данные очищены", "autostart_enabled": "Автозапуск включён",
+           "autostart_disabled": "Автозапуск отключён", "priority_set": "Приоритет установлен",
+           "minimize_tray": "Свернуть в трей", "restore": "Восстановить", "exit": "Выход",
+           "tray_running": "ShieldPro работает в фоне"},
+    "en": {"title": "ShieldPro - Antivirus", "dashboard": "Dashboard", "scan": "Scanning",
+           "quarantine": "Quarantine", "log": "Log", "settings": "Settings",
+           "profile": "Profile", "protection": "Protection Active", "quick_scan": "Quick",
+           "full_scan": "Full", "custom_scan": "Custom", "update_db": "Update DB",
+           "start": "Start", "stop": "Stop", "pause": "Pause", "resume": "Resume",
+           "refresh": "Refresh", "delete_all": "Delete All", "clear": "Clear",
+           "save": "Save", "export": "Export", "import": "Import",
            "no_threats": "No threats found", "scan_done": "Scan complete",
            "threats_count": "Threats found", "quarantine_empty": "Quarantine empty",
            "stats": "Statistics", "total_scans": "Total scans", "total_threats": "Threats detected",
@@ -107,7 +124,6 @@ LANG = {
            "threads": "Scan threads", "priority": "Process priority",
            "low": "Low", "normal": "Normal", "high": "High",
            "exclude_paths": "Excluded paths", "exclude_ext": "Excluded extensions",
-           "backup_settings": "Backup settings", "restore_settings": "Restore settings",
            "settings_saved": "Settings saved", "profile_saved": "Profile saved",
            "export_success": "Settings exported", "import_success": "Settings imported",
            "warning": "Warning", "select_folder": "Select a folder!", "confirm_clear": "Clear all?",
@@ -117,12 +133,28 @@ LANG = {
            "avg_duration": "Average time", "system_info": "System Info",
            "os": "OS", "python": "Python", "version": "Version",
            "memory_scan": "Memory scan", "processes": "Processes",
-           "usb_protection": "USB protection", "firewall": "Firewall"}
+           "usb_protection": "USB protection", "firewall": "Firewall",
+           "privacy_title": "Privacy Policy",
+           "privacy_text": "ShieldPro Beta 0.2 Pre-Release\n\n"
+               "1. Data Collection: The program does NOT collect or transmit personal data to external servers.\n"
+               "2. Local Storage: All data (settings, logs, quarantine) is stored only on your computer.\n"
+               "3. Scanning: Files are scanned locally without cloud upload.\n"
+               "4. Quarantine: Quarantined files are stored locally in data/quarantine folder.\n"
+               "5. Profile: Profile data (name, email) is stored only in settings.json.\n"
+               "6. Clear Data Button: Allows you to completely delete all your data from the program.\n"
+               "7. Updates: When auto-update is enabled, the program checks for new versions.\n\n"
+               "By clicking 'Accept', you agree to this policy.",
+           "privacy_accept": "Accept", "privacy_decline": "Decline",
+           "privacy_required": "You must accept the Privacy Policy to use this program.",
+           "clear_data": "Clear Data", "confirm_clear_data": "Are you sure? This will delete ALL data: profile, settings, logs, quarantine, statistics. This action is irreversible!",
+           "data_cleared": "All data cleared", "autostart_enabled": "Autostart enabled",
+           "autostart_disabled": "Autostart disabled", "priority_set": "Priority set",
+           "minimize_tray": "Minimize to tray", "restore": "Restore", "exit": "Exit",
+           "tray_running": "ShieldPro is running in background"}
 }
 
 def t(k): return LANG.get(cfg.language, LANG["ru"]).get(k, k)
 
-# ─── Settings Dataclass ───
 @dataclass
 class ScanSettings:
     max_file_size_mb: int = 50
@@ -158,6 +190,7 @@ class AppConfig:
     popup: bool = True
     usb_protection: bool = False
     firewall_enabled: bool = False
+    start_minimized: bool = False
 
     @classmethod
     def load(cls):
@@ -171,7 +204,8 @@ class AppConfig:
                           autostart=d.get("autostart",False), realtime=d.get("realtime",True),
                           auto_update=d.get("auto_update",True), sound=d.get("sound",True),
                           popup=d.get("popup",True), usb_protection=d.get("usb_protection",False),
-                          firewall_enabled=d.get("firewall_enabled",False))
+                          firewall_enabled=d.get("firewall_enabled",False),
+                          start_minimized=d.get("start_minimized", False))
             except: pass
         return cls()
 
@@ -190,11 +224,11 @@ class AppConfig:
                   autostart=d.get("autostart",False), realtime=d.get("realtime",True),
                   auto_update=d.get("auto_update",True), sound=d.get("sound",True),
                   popup=d.get("popup",True), usb_protection=d.get("usb_protection",False),
-                  firewall_enabled=d.get("firewall_enabled",False))
+                  firewall_enabled=d.get("firewall_enabled",False),
+                  start_minimized=d.get("start_minimized", False))
 
 cfg = AppConfig.load()
 
-# ─── Scanner Engine ───
 class Scanner:
     __slots__ = ("signatures", "stats")
     def __init__(self):
@@ -231,50 +265,75 @@ class Scanner:
     def save_stats(self):
         (DATA_DIR / "stats.json").write_text(json.dumps(self.stats))
 
+    def clear_all(self):
+        self.stats = {"total_scans": 0, "threats_detected": 0, "files_quarantined": 0, "last_scan": None, "history": []}
+        self.save_stats()
+
 scanner = Scanner()
 
-# ─── Scan Worker Thread ───
 class ScanWorker(QThread):
     progress = pyqtSignal(int, str)
     threat = pyqtSignal(str, str)
     done = pyqtSignal(int, int)
-    stopped = False
+    status_changed = pyqtSignal(str)
 
     def __init__(self, paths, max_size):
         super().__init__()
         self.paths, self.max_size = paths, max_size
+        self._stop_flag = False
+        self._pause_event = threading.Event()
+        self._pause_event.set()
 
     def run(self):
         count = threats = 0
+        ui_batch = []
         for p in self.paths:
-            if self.stopped: break
+            if self._stop_flag: break
             try:
                 if os.path.isfile(p) and os.path.getsize(p) <= self.max_size:
                     count += 1
-                    if scanner.scan_file(p):
+                    threat_name = scanner.scan_file(p)
+                    if threat_name:
                         threats += 1
-                        self.threat.emit(p, scanner.scan_file(p))
+                        self.threat.emit(p, threat_name)
                 elif os.path.isdir(p):
                     for root, _, files in os.walk(p):
-                        if self.stopped: break
+                        if self._stop_flag: break
+                        self._pause_event.wait()
                         for f in files:
-                            if self.stopped: break
+                            if self._stop_flag: break
+                            self._pause_event.wait()
                             fp = os.path.join(root, f)
                             try:
-                                if os.path.getsize(fp) <= self.max_size:
+                                sz = os.path.getsize(fp)
+                                if sz <= self.max_size:
                                     count += 1
-                                    t = scanner.scan_file(fp)
-                                    if t:
+                                    threat_name = scanner.scan_file(fp)
+                                    if threat_name:
                                         threats += 1
-                                        self.threat.emit(fp, t)
-                                    self.progress.emit(count, fp)
+                                        self.threat.emit(fp, threat_name)
+                                    if count % 10 == 0:
+                                        self.progress.emit(count, fp)
                             except: pass
             except: pass
         self.done.emit(count, threats)
 
-    def stop(self): self.stopped = True
+    def stop(self):
+        self._stop_flag = True
+        self._pause_event.set()
 
-# ─── Stylesheet Generator ───
+    def pause(self):
+        self._pause_event.clear()
+        self.status_changed.emit("paused")
+
+    def resume(self):
+        self._pause_event.set()
+        self.status_changed.emit("running")
+
+    @property
+    def is_paused(self):
+        return not self._pause_event.is_set()
+
 def qss(c):
     return f"""
     QMainWindow, QWidget {{ background: {c["bg"]}; color: {c["text"]}; font-size: {cfg.font_size}px; }}
@@ -305,7 +364,7 @@ def qss(c):
     QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 4px; border: 2px solid {c["border"]}; }}
     QCheckBox::indicator:checked {{ background: {c["primary"]}; border-color: {c["primary"]}; }}
     QLabel {{ color: {c["text"]}; }}
-    QTextEdit {{ background: {c["surface"]}; color: {c["text"]}; border: 1px solid {c["border"]}; border-radius: 5px; }}
+    QTextEdit, QTextBrowser {{ background: {c["surface"]}; color: {c["text"]}; border: 1px solid {c["border"]}; border-radius: 5px; }}
     QRadioButton {{ color: {c["text"]}; }}
     QRadioButton::indicator {{ width: 16px; height: 16px; border-radius: 8px; border: 2px solid {c["border"]}; }}
     QRadioButton::indicator:checked {{ background: {c["primary"]}; border-color: {c["primary"]}; }}
@@ -314,32 +373,50 @@ def qss(c):
     QSlider::sub-page:horizontal {{ background: {c["primary"]}; border-radius: 3px; }}
     """
 
-# ─── Helper: Card Widget ───
 def card(icon, title, value, color, parent=None):
     f = QFrame(parent); f.setStyleSheet(f"background: {THEMES[cfg.theme]['card']}; border-left: 3px solid {color}; border-radius: 8px;")
     lay = QVBoxLayout(f); lay.setSpacing(2)
     lay.addWidget(QLabel(icon), alignment=Qt.AlignmentFlag.AlignCenter)
-    tl = QLabel(title); tl.setStyleSheet(f"color: {THEMES[cfg.theme]['text2']}; font-size: {cfg.font_size-1}px;"); lay.addWidget(tl, alignment=Qt.AlignmentFlag.AlignCenter)
+    tl = QLabel(title); tl.setStyleSheet(f"color: {THEMES[cfg.theme]['text2']}; font-size: {max(cfg.font_size-1, 8)}px;"); lay.addWidget(tl, alignment=Qt.AlignmentFlag.AlignCenter)
     vl = QLabel(str(value)); vl.setStyleSheet(f"color: {THEMES[cfg.theme]['text']}; font-size: {cfg.font_size+4}px; font-weight: bold;"); lay.addWidget(vl, alignment=Qt.AlignmentFlag.AlignCenter)
     return f
 
-# ─── Main Window ───
+class PrivacyDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(t("privacy_title"))
+        self.setMinimumSize(550, 450)
+        self.setModal(True)
+        lay = QVBoxLayout(self)
+        text = QTextBrowser(self)
+        text.setPlainText(t("privacy_text"))
+        text.setReadOnly(True)
+        lay.addWidget(text)
+        btn_lay = QHBoxLayout()
+        accept_btn = QPushButton(t("privacy_accept")); accept_btn.setStyleSheet("QPushButton.success")
+        accept_btn.clicked.connect(self.accept)
+        decline_btn = QPushButton(t("privacy_decline")); decline_btn.setStyleSheet("QPushButton.danger")
+        decline_btn.clicked.connect(self.reject)
+        btn_lay.addWidget(accept_btn); btn_lay.addWidget(decline_btn)
+        lay.addLayout(btn_lay)
+
 class ShieldProGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.scan_worker: Optional[ScanWorker] = None
         self.quarantine: list = []
         self.log_events: list = []
-        self.scan_history: list = []
         self._load_quarantine()
         self._load_log()
-        self._load_history()
         self._init_ui()
         self._load_native()
+        self._apply_autostart(False)
+        self._apply_priority(False)
 
     def _init_ui(self):
         c = THEMES[cfg.theme]
-        self.setWindowTitle(t("title")); self.setMinimumSize(1100, 750)
+        self.setWindowTitle(f"{t('title')} - {VERSION}")
+        self.setMinimumSize(1100, 750)
         self.setStyleSheet(qss(c))
         cw = QWidget(); self.setCentralWidget(cw)
         main = QVBoxLayout(cw); main.setContentsMargins(0,0,0,0); main.setSpacing(0)
@@ -348,16 +425,16 @@ class ShieldProGUI(QMainWindow):
         self._build_tabs()
         main.addWidget(self.tabs)
         sb = QStatusBar(); sb.setStyleSheet(f"background:{c['surface']}; color:{c['text2']}; border-top:1px solid {c['border']};")
-        sb.showMessage(f"ShieldPro v2.0 | {t('protection')}"); self.setStatusBar(sb)
+        sb.showMessage(f"ShieldPro {VERSION} | {t('protection')}"); self.setStatusBar(sb)
         self._tray()
 
     def _header(self):
         c = THEMES[cfg.theme]
         h = QFrame(); h.setStyleSheet(f"background:{c['surface']}; border-bottom:1px solid {c['border']};"); h.setFixedHeight(60)
         lay = QHBoxLayout(h); lay.setContentsMargins(20,5,10,5)
-        lay.addWidget(QLabel("🛡️ ShieldPro"), alignment=Qt.AlignmentFlag.AlignLeft)
+        lay.addWidget(QLabel(f"ShieldPro {VERSION}"), alignment=Qt.AlignmentFlag.AlignLeft)
         lay.addStretch()
-        for txt, slot in [("─", self.showMinimized), ("☐", self._toggle_max), ("✕", self.close)]:
+        for txt, slot in [("─", self.showMinimized), ("☐", self._toggle_max), ("✕", self._close_or_minimize)]:
             b = QPushButton(txt); b.setFixedSize(35,28); b.setStyleSheet(f"QPushButton{{background:transparent;border:none;color:{c['text']};font-size:14px;}}QPushButton:hover{{background:{c['border']};}}")
             b.clicked.connect(slot); lay.addWidget(b)
         return h
@@ -365,7 +442,12 @@ class ShieldProGUI(QMainWindow):
     def _toggle_max(self):
         self.showMaximized() if not self.isMaximized() else self.showNormal()
 
+    def _close_or_minimize(self):
+        self.hide()
+        self.tray.showMessage("ShieldPro", t("tray_running"), QSystemTrayIcon.MessageIcon.Information, 2000)
+
     def _build_tabs(self):
+        while self.tabs.count(): self.tabs.removeTab(0)
         self.tabs.addTab(self._tab_dashboard(), t("dashboard"))
         self.tabs.addTab(self._tab_scan(), t("scan"))
         self.tabs.addTab(self._tab_quarantine(), t("quarantine"))
@@ -373,15 +455,14 @@ class ShieldProGUI(QMainWindow):
         self.tabs.addTab(self._tab_settings(), t("settings"))
         self.tabs.addTab(self._tab_profile(), t("profile"))
 
-    # ─── Dashboard ───
     def _tab_dashboard(self):
         w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25); lay.setSpacing(15)
-        lay.addWidget(QLabel("📊 " + t("dashboard").split()[1]), alignment=Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(QLabel(t("dashboard")), alignment=Qt.AlignmentFlag.AlignCenter)
         cards = QHBoxLayout()
-        cards.addWidget(card("🛡️", t("protection").split()[1], "Active", THEMES[cfg.theme]["success"]))
-        cards.addWidget(card("🦠", t("total_threats"), scanner.stats["threats_detected"], THEMES[cfg.theme]["danger"]))
-        cards.addWidget(card("🔍", t("last_scan"), scanner.stats.get("last_scan", t("never")), THEMES[cfg.theme]["primary"]))
-        cards.addWidget(card("📝", t("quarantined"), len(self.quarantine), THEMES[cfg.theme]["warning"]))
+        cards.addWidget(card("", t("protection"), "Active", THEMES[cfg.theme]["success"]))
+        cards.addWidget(card("", t("total_threats"), scanner.stats["threats_detected"], THEMES[cfg.theme]["danger"]))
+        cards.addWidget(card("", t("last_scan"), scanner.stats.get("last_scan", t("never")), THEMES[cfg.theme]["primary"]))
+        cards.addWidget(card("", t("quarantined"), len(self.quarantine), THEMES[cfg.theme]["warning"]))
         lay.addLayout(cards)
         btns = QHBoxLayout()
         for txt, fn in [(t("quick_scan"), self._quick_scan), (t("full_scan"), self._full_scan), (t("update_db"), self._update_db)]:
@@ -389,7 +470,6 @@ class ShieldProGUI(QMainWindow):
         lay.addLayout(btns); lay.addStretch()
         return w
 
-    # ─── Scan Tab ───
     def _tab_scan(self):
         w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
         self.scan_type = QComboBox(); self.scan_type.addItems([t("quick_scan"), t("full_scan"), t("custom_scan")])
@@ -422,22 +502,38 @@ class ShieldProGUI(QMainWindow):
         if not paths or not paths[0]:
             QMessageBox.warning(self, t("warning"), t("select_folder")); return
         self.btn_start.setEnabled(False); self.btn_pause.setEnabled(True); self.btn_stop.setEnabled(True)
+        self.btn_pause.setText(t("pause"))
         self.threats_table.setRowCount(0)
         max_sz = cfg.scan.max_file_size_mb * 1024 * 1024
         self.scan_worker = ScanWorker(paths, max_sz)
         self.scan_worker.progress.connect(lambda c, f: self.status_lbl.setText(f"Scanning: {os.path.basename(f)}"))
         self.scan_worker.threat.connect(self._add_threat)
         self.scan_worker.done.connect(self._scan_done)
+        self.scan_worker.status_changed.connect(self._on_scan_status)
         self.scan_worker.start()
         self._add_history(t("quick_scan") if idx==0 else t("full_scan") if idx==1 else t("custom_scan"), "running")
 
     def _pause_scan(self):
-        if self.scan_worker:
-            if self.scan_worker.isRunning(): self.scan_worker.wait(); self.btn_pause.setText(t("resume"))
-            else: self.scan_worker.start(); self.btn_pause.setText(t("pause"))
+        if not self.scan_worker: return
+        if self.scan_worker.is_paused:
+            self.scan_worker.resume()
+            self.btn_pause.setText(t("pause"))
+            self.status_lbl.setText("Scanning resumed...")
+        else:
+            self.scan_worker.pause()
+            self.btn_pause.setText(t("resume"))
+            self.status_lbl.setText("Scan paused")
+
+    def _on_scan_status(self, status):
+        if status == "paused":
+            self.status_lbl.setText("Scan paused")
+        elif status == "running":
+            self.status_lbl.setText("Scanning resumed...")
 
     def _stop_scan(self):
-        if self.scan_worker: self.scan_worker.stop(); self.scan_worker.wait()
+        if self.scan_worker:
+            self.scan_worker.stop()
+            self.scan_worker.wait(2000)
         self._scan_finalize(0)
 
     def _add_threat(self, fp, threat):
@@ -467,17 +563,16 @@ class ShieldProGUI(QMainWindow):
         self.btn_start.setEnabled(True); self.btn_pause.setEnabled(False); self.btn_stop.setEnabled(False)
         self.status_lbl.setText(f"{t('scan_done')}. {t('threats_count')}: {threats}")
         scanner.stats["total_scans"] += 1; scanner.stats["last_scan"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); scanner.save_stats()
-        self._update_history(status=t("completed") if threats >= 0 else t("stopped"), files_scanned=0, threats_found=threats)
+        self._update_history(status=t("completed"), files_scanned=0, threats_found=threats)
         self._log(f"Scan done. Threats: {threats}")
 
     def _quick_scan(self): self.tabs.setCurrentIndex(1); self.scan_type.setCurrentIndex(0); self._start_scan()
     def _full_scan(self): self.tabs.setCurrentIndex(1); self.scan_type.setCurrentIndex(1); self._start_scan()
     def _update_db(self): QMessageBox.information(self, t("update_db"), "Demo mode")
 
-    # ─── Quarantine Tab ───
     def _tab_quarantine(self):
         w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
-        lay.addWidget(QLabel("📛 " + t("quarantine").split()[1]))
+        lay.addWidget(QLabel(t("quarantine")))
         self.quar_table = QTableWidget(); self.quar_table.setColumnCount(4)
         self.quar_table.setHorizontalHeaderLabels(["Путь", "Угроза", "Дата", "Действия"]); self.quar_table.horizontalHeader().setStretchLastSection(True)
         lay.addWidget(self.quar_table)
@@ -495,8 +590,8 @@ class ShieldProGUI(QMainWindow):
             self.quar_table.setItem(i, 0, QTableWidgetItem(item["original"]))
             self.quar_table.setItem(i, 1, QTableWidgetItem(item["threat"]))
             self.quar_table.setItem(i, 2, QTableWidgetItem(item["date"]))
-            rb = QPushButton("Restore"); rb.clicked.connect(lambda _, x=item: self._restore_quar(x))
-            db = QPushButton("Delete"); db.clicked.connect(lambda _, x=item: self._delete_quar(x))
+            rb = QPushButton(t("restore")); rb.clicked.connect(lambda _, x=item: self._restore_quar(x))
+            db = QPushButton(t("clear")); db.clicked.connect(lambda _, x=item: self._delete_quar(x))
             cw = QWidget(); cl = QHBoxLayout(cw); cl.setContentsMargins(0,0,0,0); cl.addWidget(rb); cl.addWidget(db)
             self.quar_table.setCellWidget(i, 3, cw)
 
@@ -527,10 +622,9 @@ class ShieldProGUI(QMainWindow):
             try: self.quarantine = json.loads(QUAR_FILE.read_text())
             except: self.quarantine = []
 
-    # ─── Log Tab ───
     def _tab_log(self):
         w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
-        lay.addWidget(QLabel("📜 " + t("log").split()[1]))
+        lay.addWidget(QLabel(t("log")))
         self.log_table = QTableWidget(); self.log_table.setColumnCount(3)
         self.log_table.setHorizontalHeaderLabels(["Время", "Тип", "Сообщение"]); self.log_table.horizontalHeader().setStretchLastSection(True)
         lay.addWidget(self.log_table)
@@ -559,14 +653,12 @@ class ShieldProGUI(QMainWindow):
                 if line: self.log_events.append({"time": datetime.datetime.now().strftime("%H:%M:%S"), "type": "info", "msg": line})
         if not self.log_events: self._log("ShieldPro started")
 
-    # ─── Settings Tab ───
     def _tab_settings(self):
         w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(QWidget())
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
         inner = QWidget(); inner_lay = QVBoxLayout(inner); inner_lay.setSpacing(15)
         s = cfg.scan
 
-        # General
         g = QGroupBox(t("general")); gl = QFormLayout(g)
         self.cb_autostart = QCheckBox(t("autostart")); self.cb_autostart.setChecked(cfg.autostart); gl.addRow(self.cb_autostart)
         self.cb_realtime = QCheckBox(t("realtime")); self.cb_realtime.setChecked(cfg.realtime); gl.addRow(self.cb_realtime)
@@ -575,7 +667,6 @@ class ShieldProGUI(QMainWindow):
         self.cb_firewall = QCheckBox(t("firewall")); self.cb_firewall.setChecked(cfg.firewall_enabled); gl.addRow(self.cb_firewall)
         inner_lay.addWidget(g)
 
-        # Scan
         g2 = QGroupBox(t("scan_cfg")); g2l = QFormLayout(g2)
         self.sb_max_size = QSpinBox(); self.sb_max_size.setRange(1, 500); self.sb_max_size.setValue(s.max_file_size_mb); g2l.addRow(t("max_file_size"), self.sb_max_size)
         self.sb_depth = QSpinBox(); self.sb_depth.setRange(1, 20); self.sb_depth.setValue(s.scan_depth); g2l.addRow(t("scan_depth"), self.sb_depth)
@@ -590,9 +681,9 @@ class ShieldProGUI(QMainWindow):
         self.le_exclude_ext = QLineEdit(s.exclude_ext); g2l.addRow(t("exclude_ext"), self.le_exclude_ext)
         self.cb_priority = QComboBox(); self.cb_priority.addItems([t("low"), t("normal"), t("high")])
         self.cb_priority.setCurrentText({"low": t("low"), "normal": t("normal"), "high": t("high")}.get(s.priority, t("normal"))); g2l.addRow(t("priority"), self.cb_priority)
+        self.cb_start_min = QCheckBox(t("minimize_tray")); self.cb_start_min.setChecked(cfg.start_minimized); g2l.addRow(self.cb_start_min)
         inner_lay.addWidget(g2)
 
-        # Appearance
         g3 = QGroupBox(t("appearance")); g3l = QFormLayout(g3)
         self.cb_theme = QComboBox(); self.cb_theme.addItems([t("dark"), t("light"), t("blue")])
         self.cb_theme.setCurrentText({"dark": t("dark"), "light": t("light"), "blue": t("blue")}.get(cfg.theme, t("dark"))); g3l.addRow(t("theme"), self.cb_theme)
@@ -600,13 +691,11 @@ class ShieldProGUI(QMainWindow):
         self.sb_font = QSpinBox(); self.sb_font.setRange(8, 18); self.sb_font.setValue(cfg.font_size); g3l.addRow(t("font_size"), self.sb_font)
         inner_lay.addWidget(g3)
 
-        # Notifications
         g4 = QGroupBox(t("notifications")); g4l = QFormLayout(g4)
         self.cb_sound = QCheckBox(t("sound")); self.cb_sound.setChecked(cfg.sound); g4l.addRow(self.cb_sound)
         self.cb_popup = QCheckBox(t("popup")); self.cb_popup.setChecked(cfg.popup); g4l.addRow(self.cb_popup)
         inner_lay.addWidget(g4)
 
-        # Import/Export
         ie = QHBoxLayout()
         exp_btn = QPushButton(t("export")); exp_btn.clicked.connect(self._export_settings); ie.addWidget(exp_btn)
         imp_btn = QPushButton(t("import")); imp_btn.clicked.connect(self._import_settings); ie.addWidget(imp_btn)
@@ -619,6 +708,7 @@ class ShieldProGUI(QMainWindow):
 
     def _save_settings(self):
         theme_map = {t("dark"): "dark", t("light"): "light", t("blue"): "blue"}
+        old_lang = cfg.language
         cfg.theme = theme_map.get(self.cb_theme.currentText(), "dark")
         cfg.language = "ru" if self.cb_lang.currentIndex() == 0 else "en"
         cfg.font_size = self.sb_font.value()
@@ -629,6 +719,7 @@ class ShieldProGUI(QMainWindow):
         cfg.popup = self.cb_popup.isChecked()
         cfg.usb_protection = self.cb_usb.isChecked()
         cfg.firewall_enabled = self.cb_firewall.isChecked()
+        cfg.start_minimized = self.cb_start_min.isChecked()
         cfg.scan.max_file_size_mb = self.sb_max_size.value()
         cfg.scan.scan_depth = self.sb_depth.value()
         cfg.scan.threads = self.sb_threads.value()
@@ -643,9 +734,18 @@ class ShieldProGUI(QMainWindow):
         pri_map = {t("low"): "low", t("normal"): "normal", t("high"): "high"}
         cfg.scan.priority = pri_map.get(self.cb_priority.currentText(), "normal")
         cfg.save()
-        self.setStyleSheet(qss(THEMES[cfg.theme]))
+        self._apply_autostart()
+        self._apply_priority()
         self._log(t("settings_saved"))
         QMessageBox.information(self, t("save"), t("settings_saved"))
+        if cfg.language != old_lang:
+            QTimer.singleShot(300, self._reload_ui)
+
+    def _reload_ui(self):
+        self.setWindowTitle(f"{t('title')} - {VERSION}")
+        self.setStyleSheet(qss(THEMES[cfg.theme]))
+        self._build_tabs()
+        self.statusBar().showMessage(f"ShieldPro {VERSION} | {t('protection')}")
 
     def _export_settings(self):
         fp, _ = QFileDialog.getSaveFileName(self, t("export"), str(DATA_DIR / "settings_backup.json"), "JSON (*.json)")
@@ -660,32 +760,58 @@ class ShieldProGUI(QMainWindow):
                 cfg.save()
                 self._log(t("import_success"))
                 QMessageBox.information(self, t("import"), t("import_success"))
-                self._apply_settings()
+                self._reload_ui()
             except Exception as e: QMessageBox.critical(self, "Error", str(e))
 
-    def _apply_settings(self):
-        self.setStyleSheet(qss(THEMES[cfg.theme]))
+    def _apply_autostart(self, apply=True):
+        try:
+            import winreg
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
+            if cfg.autostart and apply:
+                exe_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
+                if getattr(sys, 'frozen', False):
+                    exe_path = sys.executable
+                winreg.SetValueEx(key, "ShieldPro", 0, winreg.REG_SZ, f'"{exe_path}"')
+                self._log(t("autostart_enabled"))
+            else:
+                try: winreg.DeleteValue(key, "ShieldPro")
+                except: pass
+                if apply: self._log(t("autostart_disabled"))
+            winreg.CloseKey(key)
+        except Exception as e:
+            self._log(f"Autostart error: {e}")
 
-    # ─── Profile Tab ───
+    def _apply_priority(self, apply=True):
+        try:
+            pri_map = {"low": 0x4000, "normal": 0x20, "high": 0x80}
+            priority = pri_map.get(cfg.scan.priority, 0x20)
+            if apply:
+                ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), priority)
+                self._log(f"{t('priority_set')}: {cfg.scan.priority}")
+        except Exception as e:
+            self._log(f"Priority error: {e}")
+
     def _tab_profile(self):
         w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(25,25,25,25)
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         inner = QWidget(); inner_lay = QVBoxLayout(inner); inner_lay.setSpacing(15)
         p = cfg.profile
 
-        # Profile info
-        g = QGroupBox("👤 " + t("profile").split()[1]); gl = QFormLayout(g)
+        g = QGroupBox(t("profile")); gl = QFormLayout(g)
         self.le_username = QLineEdit(p.username); gl.addRow(t("username"), self.le_username)
         self.le_email = QLineEdit(p.email); gl.addRow(t("email"), self.le_email)
         self.cb_level = QComboBox(); self.cb_level.addItems([t("standard"), t("enhanced"), t("maximum")])
         lvl_map = {"Стандартный": t("standard"), "Усиленный": t("enhanced"), "Максимальный": t("maximum"),
                    "standard": t("standard"), "enhanced": t("enhanced"), "maximum": t("maximum")}
         self.cb_level.setCurrentText(lvl_map.get(p.level, t("standard"))); gl.addRow(t("level"), self.cb_level)
-        save_prof = QPushButton("💾 " + t("save")); save_prof.clicked.connect(self._save_profile); gl.addRow(save_prof)
+        save_prof = QPushButton(t("save")); save_prof.clicked.connect(self._save_profile); gl.addRow(save_prof)
         inner_lay.addWidget(g)
 
-        # Statistics
-        g2 = QGroupBox("📊 " + t("stats")); g2l = QFormLayout(g2)
+        clear_btn = QPushButton(t("clear_data")); clear_btn.setStyleSheet("QPushButton.danger")
+        clear_btn.clicked.connect(self._clear_all_data); inner_lay.addWidget(clear_btn)
+
+        g2 = QGroupBox(t("stats")); g2l = QFormLayout(g2)
         g2l.addRow(t("total_scans"), QLabel(str(scanner.stats["total_scans"])))
         g2l.addRow(t("total_threats"), QLabel(str(scanner.stats["threats_detected"])))
         g2l.addRow(t("quarantined"), QLabel(str(scanner.stats["files_quarantined"])))
@@ -697,19 +823,17 @@ class ShieldProGUI(QMainWindow):
         g2l.addRow(t("avg_duration"), QLabel(f"{avg_dur:.1f} сек"))
         inner_lay.addWidget(g2)
 
-        # Scan History Table
-        g3 = QGroupBox("📜 " + t("scan_history")); g3lay = QVBoxLayout(g3)
+        g3 = QGroupBox(t("scan_history")); g3lay = QVBoxLayout(g3)
         self.history_table = QTableWidget(); self.history_table.setColumnCount(5)
         self.history_table.setHorizontalHeaderLabels([t("date"), t("type"), t("files"), t("threats"), t("status")])
         self.history_table.horizontalHeader().setStretchLastSection(True)
         g3lay.addWidget(self.history_table)
         inner_lay.addWidget(g3)
 
-        # System Info
-        g4 = QGroupBox("💻 " + t("system_info")); g4l = QFormLayout(g4)
+        g4 = QGroupBox(t("system_info")); g4l = QFormLayout(g4)
         g4l.addRow(t("os"), QLabel(f"{platform.system()} {platform.release()}"))
         g4l.addRow(t("python"), QLabel(platform.python_version()))
-        g4l.addRow(t("version"), QLabel("2.0.0"))
+        g4l.addRow(t("version"), QLabel(VERSION))
         g4l.addRow("CPU", QLabel(f"{platform.processor()}"))
         g4l.addRow("Arch", QLabel(platform.machine()))
         g4l.addRow("Node", QLabel(platform.node()))
@@ -719,6 +843,28 @@ class ShieldProGUI(QMainWindow):
         scroll.setWidget(inner); lay.addWidget(scroll)
         self._refresh_history()
         return w
+
+    def _clear_all_data(self):
+        if QMessageBox.warning(self, t("warning"), t("confirm_clear_data"),
+                               QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        if self.scan_worker and self.scan_worker.isRunning():
+            self.scan_worker.stop(); self.scan_worker.wait(2000)
+        for item in self.quarantine:
+            try:
+                if os.path.exists(item["quarantine"]): os.remove(item["quarantine"])
+            except: pass
+        self.quarantine.clear()
+        self._save_quarantine()
+        self.log_events.clear()
+        try: (LOG_DIR / "shieldpro.log").unlink(missing_ok=True)
+        except: pass
+        scanner.clear_all()
+        cfg.profile = ProfileSettings()
+        cfg.save()
+        self._log(t("data_cleared"))
+        QMessageBox.information(self, t("clear_data"), t("data_cleared"))
+        self._reload_ui()
 
     def _save_profile(self):
         level_map = {t("standard"): "standard", t("enhanced"): "enhanced", t("maximum"): "maximum",
@@ -731,7 +877,7 @@ class ShieldProGUI(QMainWindow):
 
     def _add_history(self, scan_type, status="running"):
         entry = {"date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), "type": scan_type,
-                 "files": 0, "threats": 0, "status": status, "duration": 0}
+                 "files": 0, "threats": 0, "status": status, "duration": 0, "_start": time.time()}
         scanner.stats["history"].append(entry)
         scanner.save_stats()
         self._refresh_history()
@@ -741,6 +887,7 @@ class ShieldProGUI(QMainWindow):
             h = scanner.stats["history"][-1]
             h["status"] = status; h["files"] = files_scanned; h["threats"] = threats_found
             h["duration"] = time.time() - h.get("_start", time.time())
+            h.pop("_start", None)
             scanner.save_stats()
             self._refresh_history()
 
@@ -755,10 +902,6 @@ class ShieldProGUI(QMainWindow):
             self.history_table.setItem(r, 3, QTableWidgetItem(str(h.get("threats", 0))))
             self.history_table.setItem(r, 4, QTableWidgetItem(h.get("status", "")))
 
-    def _load_history(self):
-        if not scanner.stats.get("history"): scanner.stats["history"] = []
-
-    # ─── Native Modules ───
     def _load_native(self):
         for name, lib_name in [("engine", "engine.dll"), ("heuristic", "heuristic.dll"), ("monitor", "monitor.dll"), ("updater", "updater.dll")]:
             p = MODULES_DIR / lib_name
@@ -766,25 +909,50 @@ class ShieldProGUI(QMainWindow):
                 try: ctypes.CDLL(str(p)); self._log(f"Loaded: {name}")
                 except: pass
 
-    # ─── Tray ───
     def _tray(self):
-        self.tray = QSystemTrayIcon(self); self.tray.setToolTip("ShieldPro")
+        self.tray = QSystemTrayIcon(self); self.tray.setToolTip(f"ShieldPro {VERSION}")
         menu = QMenu()
-        menu.addAction("Open", self.show)
-        menu.addAction("Exit", self.close)
-        self.tray.setContextMenu(menu); self.tray.show()
+        menu.addAction(t("restore"), self.show)
+        menu.addAction(t("exit"), self.close)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._on_tray_activated)
+        self.tray.show()
+
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.show()
 
     def closeEvent(self, e):
         if self.scan_worker and self.scan_worker.isRunning():
             if QMessageBox.question(self, t("warning"), "Stop scan and exit?") == QMessageBox.StandardButton.Yes:
-                self.scan_worker.stop(); self.scan_worker.wait()
+                self.scan_worker.stop(); self.scan_worker.wait(2000)
             else: e.ignore(); return
+        self.tray.hide()
         e.accept()
+
+    def changeEvent(self, e):
+        if e.type() == e.Type.WindowStateChange and self.windowState() & Qt.WindowState.WindowMinimized:
+            e.ignore()
+        super().changeEvent(e)
 
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    w = ShieldProGUI(); w.show()
+    app.setQuitOnLastWindowClosed(False)
+
+    is_first_run = not FIRST_RUN_FLAG.exists()
+    if is_first_run:
+        dialog = PrivacyDialog()
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            sys.exit(0)
+        FIRST_RUN_FLAG.touch()
+
+    w = ShieldProGUI()
+    if cfg.start_minimized:
+        w.hide()
+        w.tray.showMessage("ShieldPro", t("tray_running"), QSystemTrayIcon.MessageIcon.Information, 3000)
+    else:
+        w.show()
     sys.exit(app.exec())
 
 if __name__ == "__main__":
