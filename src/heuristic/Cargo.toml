@@ -1,0 +1,16 @@
+[package]
+name = "heuristic"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+name = "heuristic"
+crate-type = ["cdylib"]
+
+[dependencies]
+log = "0.4"
+env_logger = "0.10"
+
+[profile.release]
+opt-level = 3
+lto = true

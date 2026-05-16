@@ -1,0 +1,3 @@
+; Stub DLL placeholder
+; In production, compile from src/engine/scanner.c
+MZ

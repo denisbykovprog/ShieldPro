@@ -1,0 +1,2 @@
+; Stub DLL - placeholder for production build
+; Compile from src/heuristic using: cargo build --release --lib

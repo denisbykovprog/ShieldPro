@@ -1,0 +1,2 @@
+; Stub DLL - placeholder for production build
+; Compile from src/updater using: go build -buildmode=c-shared
